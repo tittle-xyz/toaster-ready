@@ -1,5 +1,9 @@
 # toaster-ready
 
+[![ci](https://github.com/tittle-xyz/toaster-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/tittle-xyz/toaster-ready/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/tittle-xyz/toaster-ready)](https://github.com/tittle-xyz/toaster-ready/releases)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 **Score how ready a repository is to ramp up on — for a new hire *or* an AI agent — and get a cited, provenance-bearing scorecard out of 100.**
 
 > *Is your repo toaster-ready?* — yes, the "toasters" are the agents.
@@ -78,6 +82,19 @@ toaster detect <path|owner/repo>     # print the detected language/stack
 ```
 
 A `owner/repo` slug is shallow-cloned via `git`. Live signals (CI status, branch protection) use the GitHub API; the client resolves a token from `GITHUB_TOKEN`, falling back to `gh auth token`. With no token it still works on public repos; auth-only facts surface as no-data. **`gate` runs offline-only by design**, so it needs no secrets in CI.
+
+## GitHub Action
+
+Gate any repo's CI on ramp-up readiness — the scorecard is written to the job summary, and the step fails if the repo is below the threshold or misses an essential (README / agent instructions / CI, or a hardcoded secret):
+
+```yaml
+- uses: actions/checkout@v4
+- uses: tittle-xyz/toaster-ready@v1
+  with:
+    min: 50          # fail below this score (optional; default uses config, else 50)
+    # target: .      # path or owner/repo (default: the checked-out repo)
+    # config: .toaster-ready.yml
+```
 
 ## Configuration
 

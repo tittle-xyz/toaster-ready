@@ -1,0 +1,60 @@
+name: 'toaster-ready'
+description: "Score a repo's ramp-up readiness (for humans + AI agents) and gate CI below a threshold."
+author: 'Drew Tittle'
+branding:
+  icon: 'check-circle'
+  color: 'orange'
+
+inputs:
+  target:
+    description: 'Path or owner/repo to score.'
+    required: false
+    default: '.'
+  min:
+    description: 'Minimum score (0-100) to pass. Overrides the config gate threshold.'
+    required: false
+    default: ''
+  config:
+    description: 'Path to a .toaster-ready.yml config file.'
+    required: false
+    default: ''
+  version:
+    description: 'Version of toaster-ready to install (e.g. v0.1.1 or latest).'
+    required: false
+    default: 'latest'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 'stable'
+
+    - name: Install toaster
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        go install "github.com/tittle-xyz/toaster-ready/cmd/toaster@${VERSION}"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Scorecard summary
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: |
+        # Surface the scorecard in the job summary (best-effort; never fails the build).
+        toaster check "$TARGET" --offline --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+    - name: Gate
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        MIN: ${{ inputs.min }}
+        CONFIG: ${{ inputs.config }}
+      run: |
+        flags=()
+        if [ -n "$MIN" ]; then flags+=(--min "$MIN"); fi
+        if [ -n "$CONFIG" ]; then flags+=(--config "$CONFIG"); fi
+        toaster gate "$TARGET" "${flags[@]}"
