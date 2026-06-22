@@ -1,0 +1,9 @@
+# build output
+/bin/
+
+# local env
+.env
+
+# editor / OS
+.DS_Store
+*.swp

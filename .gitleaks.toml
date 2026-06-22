@@ -1,0 +1,10 @@
+title = "toaster-ready gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional fake credentials in test fixtures"
+paths = [
+  '''internal/check/testdata/.*''',
+]
