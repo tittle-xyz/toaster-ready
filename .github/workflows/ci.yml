@@ -31,5 +31,5 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Ramp gates itself
+      - name: toaster-ready gates itself
         run: ./bin/toaster gate .

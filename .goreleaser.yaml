@@ -1,0 +1,32 @@
+version: 2
+
+project_name: toaster-ready
+
+builds:
+  - id: toaster
+    main: ./cmd/toaster
+    binary: toaster
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
+archives:
+  - id: toaster
+    format: tar.gz
+    name_template: "toaster_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: tittle-xyz
+    name: toaster-ready
+  # release-please creates the GitHub Release; GoReleaser appends the build artifacts.
+  mode: append
