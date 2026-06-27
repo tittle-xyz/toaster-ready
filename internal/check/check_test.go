@@ -213,6 +213,35 @@ func TestDependencyPatchingNotApplicableNoEcosystem(t *testing.T) {
 	}
 }
 
+// A repo whose run path is `npm run dev` (a package.json scripts map, not a
+// Makefile) must still register the setup task-runner signal — that was a false
+// negative that under-credited script-runner repos (issue #5).
+func TestSetupTaskRunnerRecognizesScriptRunners(t *testing.T) {
+	with := cat(scoreDir(t, writeRepo(t, map[string]string{
+		"package.json": `{"name":"app","scripts":{"dev":"next dev","build":"next build"}}`,
+	})), scorecard.CatSetup)
+	if !signalTrue(with, "task runner") {
+		t.Fatal("package.json scripts should satisfy the setup task-runner signal")
+	}
+
+	// Control: a package.json with no scripts is not a task runner.
+	without := cat(scoreDir(t, writeRepo(t, map[string]string{
+		"package.json": `{"name":"app","dependencies":{"left-pad":"1.0.0"}}`,
+	})), scorecard.CatSetup)
+	if signalTrue(without, "task runner") {
+		t.Fatal("a scripts-less package.json should not register a task runner")
+	}
+}
+
+func signalTrue(c scorecard.Category, name string) bool {
+	for _, s := range c.Signals {
+		if s.Signal == name {
+			return s.Found != nil && *s.Found
+		}
+	}
+	return false
+}
+
 // A minimal but well-formed repo should clear the functional floor and keep all
 // gate-critical categories present.
 func TestGoodRepoScoresFunctional(t *testing.T) {
