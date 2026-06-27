@@ -8,6 +8,7 @@
 package check
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -126,7 +127,7 @@ func hasHardcodedSecret(c scorecard.Category) bool {
 // used for miss/improve recommendations. Deterministic — no agent.
 var categoryAdvice = map[string]string{
 	scorecard.CatAgentInstructions:  "Add a CLAUDE.md/AGENTS.md that documents how to build, test, and deploy; keep the always-loaded footprint lean.",
-	scorecard.CatSetup:              "Document a single clone→running path (a Makefile/Taskfile target, a container, or a README setup section).",
+	scorecard.CatSetup:              "Document a single clone→running path (a task runner — Makefile/Taskfile or package.json scripts — a container, or a README setup section).",
 	scorecard.CatTesting:            "Add tests and report coverage (a coverage step in CI or a codecov/coveralls config).",
 	scorecard.CatCICD:               "Add a CI workflow that runs tests/build on push, and keep the latest run green.",
 	scorecard.CatConfigSecrets:      "Provide a .env.example, gitignore .env, and remove any hardcoded secrets from source.",
@@ -276,11 +277,46 @@ func budgetPenalty(s ctxbudget.Status) (mult float64, note string) {
 
 // --- setup reproducibility -------------------------------------------------
 
+// taskRunner returns the path of a recognized task runner, or "". Beyond the
+// dedicated runner files (Makefile/Taskfile/justfile) it recognizes
+// language-native script runners — a non-empty "scripts" map in
+// package.json/composer.json, or a Go cmd/<name>/main.go entrypoint — so a repo
+// whose documented run path is `npm run dev` (not `make`) isn't a false negative.
+func taskRunner(r *repo.Repo) string {
+	if hit := r.FirstExisting("Makefile", "makefile", "Taskfile.yml", "Taskfile.yaml", "justfile", "Justfile"); hit != "" {
+		return hit
+	}
+	for _, m := range []string{"package.json", "composer.json"} {
+		if !r.Exists(m) {
+			continue
+		}
+		if body, err := r.Read(m); err == nil && hasJSONScripts(body) {
+			return m
+		}
+	}
+	if mains := r.Glob("cmd/*/main.go"); len(mains) > 0 {
+		return mains[0]
+	}
+	return ""
+}
+
+// hasJSONScripts reports whether a package.json/composer.json declares a
+// non-empty top-level "scripts" object.
+func hasJSONScripts(body string) bool {
+	var m struct {
+		Scripts map[string]json.RawMessage `json:"scripts"`
+	}
+	if err := json.Unmarshal([]byte(body), &m); err != nil {
+		return false
+	}
+	return len(m.Scripts) > 0
+}
+
 // Setup reproducibility — clone -> running via one documented path?
 func setupReproducibility(r *repo.Repo) scorecard.Category {
 	c := newCategory(scorecard.CatSetup)
 	container := r.FirstExisting("Dockerfile", "docker-compose.yml", "compose.yml", ".devcontainer/devcontainer.json")
-	runner := r.FirstExisting("Makefile", "Taskfile.yml", "justfile")
+	runner := taskRunner(r)
 	manifest := r.FirstExisting("go.mod", "package.json", "composer.json", "requirements.txt", "pyproject.toml", "Gemfile", "Cargo.toml")
 
 	docSetup := false
