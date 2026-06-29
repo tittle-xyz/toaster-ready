@@ -157,7 +157,7 @@ func TestGateBadRepoFails(t *testing.T) {
 // above its score.
 func TestGateThresholdGatesGoodRepo(t *testing.T) {
 	dir := writeRepo(t, map[string]string{
-		"README.md":                "# Widget\n\n## What\nA service.\n\n## Setup\nRun `make run`. " + strings.Repeat("Orientation. ", 30),
+		"README.md":                "# Widget\n\n## What\nA service.\n\n## Setup\n```sh\nmake run\n```\n" + strings.Repeat("Orientation. ", 30),
 		"CLAUDE.md":                "# Agent guide\n\n" + strings.Repeat("Use the Makefile; tests via make test. ", 20),
 		"go.mod":                   "module example.com/widget\n",
 		"Makefile":                 "run:\n\techo run\n",
@@ -263,7 +263,7 @@ func TestGoodRepoScoresFunctional(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("README.md", "# Widget\n\n## What\nA widget service.\n\n## Setup\nRun `make run` after cloning. "+strings.Repeat("Orientation and background. ", 30))
+	write("README.md", "# Widget\n\n## What\nA widget service.\n\n## Setup\nAfter cloning:\n```sh\nmake run\n```\n"+strings.Repeat("Orientation and background. ", 30))
 	write("CLAUDE.md", "# Agent guide\n\n"+strings.Repeat("Use the Makefile targets; tests via `make test`; deploy via CI. ", 20))
 	write("go.mod", "module example.com/widget\n")
 	write("Makefile", "run:\n\techo run\ntest:\n\techo test\n")

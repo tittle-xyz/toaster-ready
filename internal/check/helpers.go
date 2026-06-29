@@ -301,6 +301,75 @@ func justRecipes(r *repo.Repo) map[string]bool {
 	return set
 }
 
+// --- runnable runbook detection --------------------------------------------
+
+// runCmdRe matches a recognized "run the app" command (issue #3's allow-list).
+// It is about *starting* something — a dev server, a container, a binary — not
+// building or testing it, so `make build` / `npm test` deliberately do not match.
+var runCmdRe = regexp.MustCompile(`(?i)\b(?:` +
+	`docker(?:-|\s)compose\s+up` +
+	`|docker\s+run` +
+	`|(?:make|just)\s+(?:run|dev|start|serve|up|watch)\b` +
+	`|(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:dev|start|serve|preview)\b` +
+	`|go\s+run\b` +
+	`|cargo\s+run\b` +
+	`|dotnet\s+run\b` +
+	`|flask\s+run\b` +
+	`|(?:uvicorn|gunicorn|hypercorn)\b` +
+	`|manage\.py\s+runserver` +
+	`|rails\s+(?:server|s)\b` +
+	`|artisan\s+serve` +
+	`|gradlew\b[^\n]*\bbootRun` +
+	`)`)
+
+// endpointRe spots a reachable local endpoint/port near the run command — the
+// "and here's where the app comes up" half of issue #3. It strengthens the
+// evidence note but is not required (a CLI has no port).
+var endpointRe = regexp.MustCompile(`(?i)(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d{2,5}|https?://localhost|\bport\s+\d{2,5}\b|:\d{3,5}\b`)
+
+// fencedText returns only the contents of fenced ``` code blocks, joined by
+// newlines. The runbook lives in a fenced block an agent can copy-paste — not an
+// inline mention in prose (e.g. a rubric table that merely lists `make run` as an
+// example), which would be a false positive.
+func fencedText(md string) string {
+	var b strings.Builder
+	for _, m := range fencedRe.FindAllStringSubmatch(md, -1) {
+		b.WriteString(m[1])
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// runnableRunbook reports whether the agent-instructions file or README contains
+// a copy-pasteable run command — one an agent can execute without inferring it —
+// inside a fenced code block, and from which file.
+func runnableRunbook(r *repo.Repo) (src string, hasEndpoint bool, ok bool) {
+	for _, f := range runbookSources(r) {
+		body, err := r.Read(f)
+		if err != nil {
+			continue
+		}
+		fenced := fencedText(body)
+		if runCmdRe.MatchString(fenced) {
+			return f, endpointRe.MatchString(fenced), true
+		}
+	}
+	return "", false, false
+}
+
+// runbookSources lists the files a runnable run command may live in, agent
+// instructions first (that's where an agent looks), then the README.
+func runbookSources(r *repo.Repo) []string {
+	var srcs []string
+	if f := r.FirstExisting("CLAUDE.md", "AGENTS.md", ".cursorrules", ".github/copilot-instructions.md"); f != "" {
+		srcs = append(srcs, f)
+	}
+	if f := r.FirstExisting("README.md", "README.rst", "README.txt", "README"); f != "" {
+		srcs = append(srcs, f)
+	}
+	return srcs
+}
+
 // --- secret floor (regex, v0.1; gitleaks swaps in later) -------------------
 
 type secretHit struct {

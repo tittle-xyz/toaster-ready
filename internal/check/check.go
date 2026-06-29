@@ -22,7 +22,7 @@ import (
 )
 
 // RubricVersion is bumped whenever categories or scoring change.
-const RubricVersion = "2.1"
+const RubricVersion = "2.2"
 
 // Signal names for the agent-instructions facets. recommend() keys on these so
 // a bloated/stale/drifted-but-present file gets "fix it" advice rather than
@@ -434,21 +434,54 @@ func setupReproducibility(r *repo.Repo) scorecard.Category {
 		}
 	}
 
+	// Facet: an executable run command (issue #3). A documented setup *section* is
+	// prose; this is a copy-pasteable command an agent can run without inferring.
+	// It's the lever between "the repo has the pieces" and "it runs as written".
+	runbookSrc, hasEndpoint, runbook := runnableRunbook(r)
+	if runbook {
+		note := "copy-pasteable run command in code"
+		if hasEndpoint {
+			note += " (with a reachable endpoint/port)"
+		}
+		c.Signals = append(c.Signals, evNote("runnable run command", scorecard.MethodContent, runbookSrc, note))
+	} else {
+		c.Signals = append(c.Signals, evAbsent("runnable run command", scorecard.MethodContent, ""))
+	}
+
 	complete := (container != "" && (runner != "" || manifest != "" || docSetup)) ||
 		(runner != "" && manifest != "") ||
 		(manifest != "" && docSetup)
 	any := container != "" || runner != "" || manifest != "" || docSetup
-	raw := 0
+
+	// Structural completeness sets the floor; the runnable runbook lifts it toward
+	// full marks. A repo can't reach 1.0 on structure alone — without an executable
+	// path an agent still has to infer how to start it.
+	var base float64
 	switch {
 	case complete:
-		raw = 2
+		base = setupStructuralComplete
 	case any:
-		raw = 1
+		base = setupStructuralPartial
 	}
-	c.Normalized = scaled(raw)
-	c.Rationale = "Deterministic proxy on setup signals (container / task-runner+manifest / manifest+docs); judgment confirms a single documented path."
+	if runbook {
+		base += setupRunbookBonus
+	}
+	if base > 1 {
+		base = 1
+	}
+	c.Normalized = base
+	c.Rationale = "Structural signals (container / task-runner+manifest / manifest+docs) set the floor; a copy-pasteable run command lifts toward full marks. Judgment confirms a single documented path."
 	return c
 }
+
+// setup-reproducibility scoring weights: structural completeness vs. the
+// executable-runbook facet (issue #3). complete structure + a runnable command
+// is the only path to full marks.
+const (
+	setupStructuralComplete = 0.75
+	setupStructuralPartial  = 0.35
+	setupRunbookBonus       = 0.25
+)
 
 // --- CI: test / build / deploy ---------------------------------------------
 
