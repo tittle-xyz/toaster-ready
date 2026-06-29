@@ -22,11 +22,33 @@ import (
 )
 
 // RubricVersion is bumped whenever categories or scoring change.
-const RubricVersion = "2.0"
+const RubricVersion = "2.1"
 
-// budgetSignal is the agent-instructions facet-3 signal name; recommend() keys on
-// it to give "trim it" advice rather than treating bloat as a missing file.
-const budgetSignal = "always-loaded context budget"
+// Signal names for the agent-instructions facets. recommend() keys on these so
+// a bloated/stale/drifted-but-present file gets "fix it" advice rather than
+// being treated as a missing file.
+const (
+	budgetSignal = "always-loaded context budget"
+	staleSignal  = "instructions freshness"
+	driftSignal  = "instructions command drift"
+)
+
+// Staleness tunables: instructions are flagged stale when at least
+// staleMinCommits source commits postdate their last update (a floor that keeps
+// tiny/young repos quiet) AND those make up at least staleRatio of all source
+// history (so "the code moved on without the docs" is what trips it).
+const (
+	staleMinCommits = 8
+	staleRatio      = 0.5
+)
+
+// Drift penalties on the agent-instructions subscore. A concretely broken
+// command reference is a stronger signal than the staleness heuristic, so it
+// costs more. Both are multiplicative and compose with the budget penalty.
+const (
+	driftMultStale = 0.8
+	driftMultCmd   = 0.6
+)
 
 // Run scores r against cfg and returns a complete Scorecard. Pass
 // config.Default() for the built-in rubric.
@@ -146,6 +168,7 @@ func recommend(c scorecard.Category) []scorecard.Recommendation {
 	var recs []scorecard.Recommendation
 	var missRef string
 	sawMiss, sawNoData, overBudget := false, false, false
+	stale, cmdDrift := false, false
 	var ndSignal, ndReason string
 
 	for _, e := range c.Signals {
@@ -154,6 +177,12 @@ func recommend(c scorecard.Category) []scorecard.Recommendation {
 			// The file exists but its always-loaded footprint is over budget — a
 			// "trim it" case, not an "add it" miss.
 			overBudget = true
+		case e.Signal == staleSignal && e.Status == scorecard.StatusOK && e.Found != nil && !*e.Found:
+			// Present but stale vs source churn — "refresh it", not "add it".
+			stale = true
+		case e.Signal == driftSignal && e.Status == scorecard.StatusOK && e.Found != nil && !*e.Found:
+			// Present but documents commands that don't exist — "fix it".
+			cmdDrift = true
 		case e.Status == scorecard.StatusOK && e.Found != nil && !*e.Found:
 			if !sawMiss {
 				sawMiss, missRef = true, evidenceRef(e)
@@ -171,9 +200,19 @@ func recommend(c scorecard.Category) []scorecard.Recommendation {
 	case overBudget:
 		recs = append(recs, scorecard.Recommendation{Category: c.ID, Cause: scorecard.CauseImprove, EvidenceRef: budgetSignal,
 			Action: "Trim the always-loaded agent context (instructions + memory); move detail into lazy-loaded skills/imports to get under budget."})
+	case cmdDrift || stale:
+		// Specific drift recommendations are appended below; suppress generic advice.
 	case !sawNoData:
 		// Present but partial, with no explicit absent signal — strengthen it.
 		recs = append(recs, scorecard.Recommendation{Category: c.ID, Cause: scorecard.CauseImprove, Action: advice})
+	}
+	if cmdDrift {
+		recs = append(recs, scorecard.Recommendation{Category: c.ID, Cause: scorecard.CauseImprove, EvidenceRef: driftSignal,
+			Action: "Fix or remove documented commands that don't exist in the repo (drifted make/npm/just targets); the instructions should run as written."})
+	}
+	if stale {
+		recs = append(recs, scorecard.Recommendation{Category: c.ID, Cause: scorecard.CauseImprove, EvidenceRef: staleSignal,
+			Action: "The instructions predate most of the source history — review them for drift and refresh the parts the code has moved past."})
 	}
 	if sawNoData {
 		recs = append(recs, scorecard.Recommendation{
@@ -257,9 +296,69 @@ func agentInstructions(r *repo.Repo, cb config.ContextBudget) scorecard.Category
 		},
 	})
 
-	c.Normalized = base * budgetMult
-	c.Rationale = "Three facets: exists · explains the mechanics (length proxy) · fits a context budget. " + budgetNote
+	// Facet 4 (stays true to the code): presence ≠ accuracy. We can't judge prose
+	// correctness deterministically, but we can catch mechanical drift — see
+	// instructionsDrift. It appends its own signals (incl. no-data when git
+	// history is unavailable) and returns a multiplier on the subscore.
+	driftMult := instructionsDrift(r, f, body, &c)
+
+	c.Normalized = base * budgetMult * driftMult
+	c.Rationale = "Facets: exists · explains the mechanics (length proxy) · fits a context budget · stays true to the code (freshness + command drift). " + budgetNote
 	return c
+}
+
+// instructionsDrift evaluates whether present instructions have drifted from the
+// code — the "presence ≠ accuracy" gap. It appends two signals to c and returns
+// a multiplier in (0,1]:
+//
+//   - freshness (git): how many source commits postdate the last instructions
+//     edit. Three-state — no-data on a shallow/non-git tree, never a penalty.
+//   - command drift (content): documented make/npm/just targets that don't
+//     resolve to a real manifest entry — a concretely wrong instruction.
+//
+// Found follows the codebase convention "the good property holds": Found=true
+// means fresh / no drift. recommend() special-cases both signals so a stale or
+// drifted (but present) file isn't reported as a missing file.
+func instructionsDrift(r *repo.Repo, instrPath, body string, c *scorecard.Category) float64 {
+	mult := 1.0
+
+	if since, total, ok := r.InstructionsChurn(instrPath); !ok {
+		c.Signals = append(c.Signals, evNoData(staleSignal, scorecard.MethodGit,
+			"no git history (not a git repo, a shallow clone, or the file is untracked)"))
+	} else {
+		ratio := 0.0
+		if total > 0 {
+			ratio = float64(since) / float64(total)
+		}
+		stale := since >= staleMinCommits && ratio >= staleRatio
+		c.Signals = append(c.Signals, scorecard.Evidence{
+			Signal: staleSignal, Method: scorecard.MethodGit, Status: scorecard.StatusOK,
+			Found: scorecard.Boolp(!stale), Path: instrPath, Source: "filesystem",
+			Note: fmt.Sprintf("%d of %d source commits postdate the last instructions update (%.0f%%)", since, total, ratio*100),
+			Metrics: map[string]any{
+				"sourceCommitsSince": since, "sourceCommitsTotal": total, "ratio": ratio,
+			},
+		})
+		if stale {
+			mult *= driftMultStale
+		}
+	}
+
+	hits := commandDrift(r, body)
+	drift := scorecard.Evidence{
+		Signal: driftSignal, Method: scorecard.MethodContent, Status: scorecard.StatusOK,
+		Found: scorecard.Boolp(len(hits) == 0), Path: instrPath, Source: "filesystem",
+	}
+	if len(hits) > 0 {
+		drift.Note = "documented commands not found in the repo: " + strings.Join(hits, ", ")
+		drift.Metrics = map[string]any{"missingCommands": hits}
+		mult *= driftMultCmd
+	} else {
+		drift.Note = "documented make/npm/just targets resolve to real manifest entries"
+	}
+	c.Signals = append(c.Signals, drift)
+
+	return mult
 }
 
 // budgetPenalty maps a context-budget status to a multiplier on the

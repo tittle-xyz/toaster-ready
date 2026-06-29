@@ -3,6 +3,7 @@
 package check
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -145,6 +146,159 @@ func boolN(bs ...bool) int {
 		}
 	}
 	return n
+}
+
+// --- instruction command-drift detection -----------------------------------
+
+// codeText returns only the code in a markdown document — the contents of
+// fenced ``` blocks plus inline `code` spans — joined by newlines. Command-drift
+// detection runs over this, not the prose, so phrases like "make sure" or "just
+// works" can't masquerade as a `make`/`just` invocation.
+var (
+	fencedRe = regexp.MustCompile("(?s)```[^\n]*\n(.*?)```")
+	inlineRe = regexp.MustCompile("`([^`\n]+)`")
+)
+
+func codeText(md string) string {
+	var b strings.Builder
+	for _, m := range fencedRe.FindAllStringSubmatch(md, -1) {
+		b.WriteString(m[1])
+		b.WriteByte('\n')
+	}
+	// Strip fenced blocks before scanning inline spans so their backticks don't
+	// double-count, then collect inline `code`.
+	rest := fencedRe.ReplaceAllString(md, "\n")
+	for _, m := range inlineRe.FindAllStringSubmatch(rest, -1) {
+		b.WriteString(m[1])
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// command-reference patterns, scoped to code only (see codeText). Each captures
+// the target/script/recipe name in group 1.
+var (
+	makeCmdRe = regexp.MustCompile(`\bmake\s+([A-Za-z0-9_][A-Za-z0-9_.-]*)`)
+	npmCmdRe  = regexp.MustCompile(`\b(?:npm|pnpm|yarn|bun)\s+run\s+([A-Za-z0-9_][A-Za-z0-9_:.-]*)`)
+	justCmdRe = regexp.MustCompile(`\bjust\s+([A-Za-z0-9_][A-Za-z0-9_.-]*)`)
+)
+
+// makeTargetRe matches a Makefile target definition (start of line, before ':').
+var makeTargetRe = regexp.MustCompile(`(?m)^([A-Za-z0-9_][A-Za-z0-9_.-]*)\s*:(?:[^=]|$)`)
+
+// commandDrift returns the command invocations referenced in the instructions'
+// code that do NOT resolve to a real target in the repo's manifests: a `make X`
+// with no `X` target (or no Makefile), an `npm/pnpm/yarn/bun run X` absent from
+// package.json scripts (or no package.json), or a `just X` absent from the
+// justfile. Each hit is a short human-readable label. A referenced runner whose
+// manifest is missing entirely is a hit too — the documented command can't run.
+// Conservative by design: it only flags concrete, named targets found in code,
+// never bare tool names or dependencies mentioned in prose.
+func commandDrift(r *repo.Repo, instrBody string) []string {
+	code := codeText(instrBody)
+	var hits []string
+	seen := map[string]bool{}
+	add := func(label string) {
+		if !seen[label] {
+			seen[label] = true
+			hits = append(hits, label)
+		}
+	}
+
+	// make
+	if refs := captureAll(makeCmdRe, code); len(refs) > 0 {
+		targets := makeTargets(r)
+		for _, t := range refs {
+			if !targets[t] {
+				add("make " + t)
+			}
+		}
+	}
+	// npm/pnpm/yarn/bun run
+	if refs := captureAll(npmCmdRe, code); len(refs) > 0 {
+		scripts := packageScripts(r)
+		for _, s := range refs {
+			if !scripts[s] {
+				add("npm run " + s)
+			}
+		}
+	}
+	// just
+	if refs := captureAll(justCmdRe, code); len(refs) > 0 {
+		recipes := justRecipes(r)
+		for _, t := range refs {
+			if !recipes[t] {
+				add("just " + t)
+			}
+		}
+	}
+	sort.Strings(hits)
+	return hits
+}
+
+func captureAll(re *regexp.Regexp, s string) []string {
+	var out []string
+	for _, m := range re.FindAllStringSubmatch(s, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// makeTargets returns the set of targets declared in the repo's Makefile (empty
+// when there is none, which makes any documented `make X` a drift hit).
+func makeTargets(r *repo.Repo) map[string]bool {
+	set := map[string]bool{}
+	mk := r.FirstExisting("Makefile", "makefile", "GNUmakefile")
+	if mk == "" {
+		return set
+	}
+	body, err := r.Read(mk)
+	if err != nil {
+		return set
+	}
+	// makeTargetRe's leading [A-Za-z0-9_] already excludes directives like .PHONY.
+	for _, m := range makeTargetRe.FindAllStringSubmatch(body, -1) {
+		set[m[1]] = true
+	}
+	return set
+}
+
+// packageScripts returns the set of npm script names from package.json.
+func packageScripts(r *repo.Repo) map[string]bool {
+	set := map[string]bool{}
+	body, err := r.Read("package.json")
+	if err != nil {
+		return set
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if json.Unmarshal([]byte(body), &pkg) != nil {
+		return set
+	}
+	for name := range pkg.Scripts {
+		set[name] = true
+	}
+	return set
+}
+
+// justRecipes returns the set of recipe names declared in the repo's justfile.
+func justRecipes(r *repo.Repo) map[string]bool {
+	set := map[string]bool{}
+	jf := r.FirstExisting("justfile", "Justfile", ".justfile")
+	if jf == "" {
+		return set
+	}
+	body, err := r.Read(jf)
+	if err != nil {
+		return set
+	}
+	// Recipes look like `name:` or `name arg:` at column 0; skip assignments and
+	// comments. Reuse makeTargetRe's shape (recipe header before ':').
+	for _, m := range makeTargetRe.FindAllStringSubmatch(body, -1) {
+		set[m[1]] = true
+	}
+	return set
 }
 
 // --- secret floor (regex, v0.1; gitleaks swaps in later) -------------------
