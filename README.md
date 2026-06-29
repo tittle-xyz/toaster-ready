@@ -29,7 +29,7 @@ Eleven weighted categories, scored 0–100. Each category yields a normalized su
 | Category | Weight | Looks for |
 |---|--:|---|
 | Agent/human instructions | 15 | `CLAUDE.md`/`AGENTS.md` that explain the mechanics, **fit a context budget** (bloat is penalized), and **stay true to the code** — stale-vs-churn and broken `make`/`npm`/`just` command references are penalized (presence ≠ accuracy) |
-| Setup reproducibility | 12 | clone → running via one documented path |
+| Setup reproducibility | 12 | clone → running via one documented path — full marks need a **copy-pasteable run command** (e.g. `docker compose up`, `npm run dev`, `make run`), not just a prose setup section |
 | Testing & coverage | 12 | tests exist and coverage is reported |
 | CI: test / build / deploy | 12 | pipeline present and actually green |
 | Config & secrets | 10 | `.env.example` present; no secrets in source |
