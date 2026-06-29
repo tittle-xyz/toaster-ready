@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -177,6 +178,72 @@ func (r *Repo) GitTags() []string {
 		}
 	}
 	return tags
+}
+
+// IsShallow reports whether the working tree is a shallow clone — one without
+// full history. The drift checker's staleness signal is meaningless on a
+// shallow tree (a `--depth 1` clone has a single commit that "touched" every
+// file), so it must surface no-data rather than trust the truncated log.
+func (r *Repo) IsShallow() bool {
+	out, err := exec.Command("git", "-C", r.Root, "rev-parse", "--is-shallow-repository").Output()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "true"
+}
+
+// InstructionsChurn measures how stale instrPath is against source churn: it
+// returns the number of commits touching non-doc source *after* the commit that
+// last modified instrPath (since), the total number of such source commits in
+// history (total), and ok. ok=false means git history is unavailable — not a
+// git repo, a shallow clone, or instrPath is untracked — and the caller MUST
+// treat that as no-data, never as "fresh". Markdown is excluded from "source"
+// so doc-only churn doesn't read as the codebase moving out from under the docs.
+func (r *Repo) InstructionsChurn(instrPath string) (since, total int, ok bool) {
+	if r.Ref == "" || r.IsShallow() {
+		return 0, 0, false
+	}
+	sha := r.lastCommitSha(instrPath)
+	if sha == "" {
+		return 0, 0, false // file untracked / no history for it
+	}
+	// Pathspec: everything except markdown (top-level and nested).
+	srcSpec := []string{".", ":(exclude)*.md", ":(exclude,glob)**/*.md"}
+	total, okT := r.countCommits("HEAD", srcSpec)
+	since, okS := r.countCommits(sha+"..HEAD", srcSpec)
+	if !okT || !okS {
+		return 0, 0, false
+	}
+	return since, total, true
+}
+
+// lastCommitSha returns the SHA of the most recent commit that touched rel, or
+// "" if rel has no history (untracked, or not a git repo).
+func (r *Repo) lastCommitSha(rel string) string {
+	out, err := exec.Command("git", "-C", r.Root, "log", "-1", "--format=%H", "--", rel).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// countCommits runs `git rev-list --count <revRange> -- <pathspec...>` and
+// returns the count. ok=false on any git error or unparseable output.
+func (r *Repo) countCommits(revRange string, pathspec []string) (int, bool) {
+	args := []string{"-C", r.Root, "rev-list", "--count", revRange}
+	if len(pathspec) > 0 {
+		args = append(args, "--")
+		args = append(args, pathspec...)
+	}
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 func isLocalPath(target string) bool {

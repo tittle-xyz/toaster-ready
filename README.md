@@ -28,7 +28,7 @@ Eleven weighted categories, scored 0–100. Each category yields a normalized su
 
 | Category | Weight | Looks for |
 |---|--:|---|
-| Agent/human instructions | 15 | `CLAUDE.md`/`AGENTS.md` that explain the mechanics — and **fit a context budget** (bloat is penalized) |
+| Agent/human instructions | 15 | `CLAUDE.md`/`AGENTS.md` that explain the mechanics, **fit a context budget** (bloat is penalized), and **stay true to the code** — stale-vs-churn and broken `make`/`npm`/`just` command references are penalized (presence ≠ accuracy) |
 | Setup reproducibility | 12 | clone → running via one documented path |
 | Testing & coverage | 12 | tests exist and coverage is reported |
 | CI: test / build / deploy | 12 | pipeline present and actually green |

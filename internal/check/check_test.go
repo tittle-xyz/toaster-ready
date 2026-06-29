@@ -110,13 +110,21 @@ func TestOverBudgetRecommendationIsTrimNotAdd(t *testing.T) {
 	if len(ai.Recommendations) == 0 {
 		t.Fatal("over-budget agent-instructions should have a recommendation")
 	}
+	var sawBudgetImprove bool
 	for _, r := range ai.Recommendations {
+		// Never tell a user to "add" a file that's present (just bloated).
 		if strings.Contains(strings.ToLower(r.Action), "add a claude.md") {
 			t.Errorf("contradictory advice: %q", r.Action)
 		}
-		if r.Cause != scorecard.CauseImprove {
-			t.Errorf("over-budget should be an improve recommendation, got cause %q", r.Cause)
+		if r.EvidenceRef == budgetSignal {
+			if r.Cause != scorecard.CauseImprove {
+				t.Errorf("over-budget should be an improve recommendation, got cause %q", r.Cause)
+			}
+			sawBudgetImprove = true
 		}
+	}
+	if !sawBudgetImprove {
+		t.Error("expected an over-budget 'trim it' improve recommendation")
 	}
 }
 
