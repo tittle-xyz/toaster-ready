@@ -38,7 +38,7 @@ Eleven weighted categories, scored 0–100. Each category yields a normalized su
 | Source-material trail | 7 | the *why* is recoverable (ADRs, linked decisions) |
 | In-repo tooling | 6 | task runner / scripts / agent skills |
 | Dependency patching | 5 | Dependabot/Renovate over a lockfile |
-| DB migrations | 3 | schema managed via migrations (N/A when there's no DB) |
+| DB migrations | 3 | local datastore provisioning — managed migrations (core) plus a compose **DB service** to bring it up and a **seed** script to populate it (N/A when there's no DB) |
 
 **Bands:** `0–49` needs-work · `50–84` functional · `85–100` exemplary.
 
