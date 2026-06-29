@@ -200,6 +200,8 @@ func TestDBMigrationsNotApplicableNoDB(t *testing.T) {
 	}
 }
 
+// Migrations alone make the category applicable and earn the core, but full
+// marks require the full local-provisioning trio (bring-up + migrate + seed).
 func TestDBMigrationsScoredWhenDBPresent(t *testing.T) {
 	sc := scoreDir(t, writeRepo(t, map[string]string{
 		"composer.json":           `{"require":{"doctrine/orm":"^2.0"}}`,
@@ -209,8 +211,8 @@ func TestDBMigrationsScoredWhenDBPresent(t *testing.T) {
 	if !m.Applicable {
 		t.Fatal("a DB driver should make db-migrations applicable")
 	}
-	if m.Normalized != 1.0 {
-		t.Fatalf("DB + migrations => normalized 1.0, got %v", m.Normalized)
+	if m.Normalized != dbMigrationsCore {
+		t.Fatalf("DB + migrations only => normalized %v, got %v", dbMigrationsCore, m.Normalized)
 	}
 }
 

@@ -5,6 +5,7 @@ package check
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -368,6 +369,101 @@ func runbookSources(r *repo.Repo) []string {
 		srcs = append(srcs, f)
 	}
 	return srcs
+}
+
+// --- local datastore provisioning (issue #4) -------------------------------
+
+// dbImageTokens are container-image name fragments that identify a database
+// service in a compose file — the "you can bring the DB up locally" signal.
+var dbImageTokens = []string{
+	"postgres", "postgis", "timescale", "mysql", "mariadb", "percona",
+	"mongo", "redis", "valkey", "memcached", "cockroach", "clickhouse",
+	"cassandra", "scylla", "neo4j", "couchdb", "couchbase", "rethinkdb",
+	"mssql", "sqlserver", "elasticsearch", "opensearch", "influxdb",
+}
+
+var composeImageRe = regexp.MustCompile(`(?im)^\s*image:\s*["']?([^\s"']+)`)
+
+// composeDBService reports whether a docker-compose / compose file declares a
+// service whose image is a recognized database, and returns the matched image
+// and the file it came from. This is the "local data store you can bring up"
+// half of clone→running for a DB-backed app.
+func composeDBService(r *repo.Repo) (image, where string, ok bool) {
+	var files []string
+	for _, pat := range []string{"docker-compose*.yml", "docker-compose*.yaml", "compose*.yml", "compose*.yaml"} {
+		files = append(files, r.Glob(pat)...)
+	}
+	for _, f := range files {
+		body, err := r.Read(f)
+		if err != nil {
+			continue
+		}
+		for _, m := range composeImageRe.FindAllStringSubmatch(body, -1) {
+			name := imageName(m[1])
+			for _, tok := range dbImageTokens {
+				if strings.Contains(name, tok) {
+					return m[1], f, true
+				}
+			}
+		}
+	}
+	return "", "", false
+}
+
+// imageName reduces a container image reference to its lowercase short name —
+// registry, org, and tag stripped (e.g. "bitnami/postgresql:15" -> "postgresql").
+func imageName(ref string) string {
+	ref = strings.ToLower(ref)
+	if i := strings.IndexAny(ref, "@:"); i >= 0 {
+		ref = ref[:i]
+	}
+	if i := strings.LastIndex(ref, "/"); i >= 0 {
+		ref = ref[i+1:]
+	}
+	return ref
+}
+
+// hasSeed reports whether the repo ships seed data or a seed runner — the
+// "populate it so it's usable" half. It recognizes seed files/dirs and a seed
+// target in a Makefile / package.json / justfile.
+func hasSeed(r *repo.Repo) (where string, ok bool) {
+	for _, rel := range r.Files() {
+		low := filepath.ToSlash(strings.ToLower(rel))
+		base := strings.ToLower(filepath.Base(rel))
+		seedFile := base == "seed" || base == "seeds" ||
+			strings.HasPrefix(base, "seed.") || strings.HasPrefix(base, "seeds.")
+		seedDir := strings.HasPrefix(low, "seed/") || strings.HasPrefix(low, "seeds/") ||
+			strings.Contains(low, "/seed/") || strings.Contains(low, "/seeds/") ||
+			strings.Contains(low, "db/seed")
+		if seedFile || seedDir {
+			return rel, true
+		}
+	}
+	if t := seedTarget(r); t != "" {
+		return t, true
+	}
+	return "", false
+}
+
+// seedTarget finds a seed runner declared in a task manifest, reusing the
+// command-drift manifest parsers.
+func seedTarget(r *repo.Repo) string {
+	for name := range makeTargets(r) {
+		if strings.Contains(name, "seed") {
+			return "Makefile"
+		}
+	}
+	for name := range packageScripts(r) {
+		if strings.Contains(name, "seed") {
+			return "package.json"
+		}
+	}
+	for name := range justRecipes(r) {
+		if strings.Contains(name, "seed") {
+			return "justfile"
+		}
+	}
+	return ""
 }
 
 // --- secret floor (regex, v0.1; gitleaks swaps in later) -------------------

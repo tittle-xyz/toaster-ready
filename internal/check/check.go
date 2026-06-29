@@ -22,7 +22,7 @@ import (
 )
 
 // RubricVersion is bumped whenever categories or scoring change.
-const RubricVersion = "2.2"
+const RubricVersion = "2.3"
 
 // Signal names for the agent-instructions facets. recommend() keys on these so
 // a bloated/stale/drifted-but-present file gets "fix it" advice rather than
@@ -158,7 +158,7 @@ var categoryAdvice = map[string]string{
 	scorecard.CatSourceTrail:        "Record decisions as ADRs and link the source material (Confluence/Jira) that explains the why.",
 	scorecard.CatInRepoTooling:      "Add a task runner (Makefile/Taskfile), a scripts/ directory, or agent skills so common tasks are reproducible.",
 	scorecard.CatDependencyPatching: "Pin dependencies with a lockfile and enable Dependabot or Renovate.",
-	scorecard.CatDBMigrations:       "Manage schema changes with a migrations tool and a migrations/ directory.",
+	scorecard.CatDBMigrations:       "Make the database self-contained locally: a compose service for the DB, a migrations/ directory, and a seed script/target.",
 }
 
 // recommend turns a below-threshold category into actionable advice, keyed off
@@ -817,20 +817,24 @@ func dependencyPatching(r *repo.Repo, stacks detect.Result) scorecard.Category {
 
 // --- DB migrations ---------------------------------------------------------
 
-// DB migrations — when the repo uses a database, are schema changes managed via
-// migrations? Not-applicable when no database is detected (the showcase for the
+// DB migrations — when the repo uses a database, is it provisionable locally for
+// clone→running? Scores the trio that makes a DB-backed app self-contained: a
+// local DB service to bring up (compose), managed migrations, and seed data.
+// Not-applicable when no database is detected (the showcase for the
 // not-applicable state: a DB-less repo isn't punished for having no migrations).
 func dbMigrations(r *repo.Repo) scorecard.Category {
 	c := newCategory(scorecard.CatDBMigrations)
 	migrations := hasMigrations(r)
 	driver, driverWhere := hasDBDriver(r)
+	dbImage, dbWhere, dbService := composeDBService(r)
+	seedWhere, seed := hasSeed(r)
 
-	if !migrations && driver == "" {
+	if !migrations && driver == "" && !dbService {
 		c.Applicable = false
 		c.Signals = append(c.Signals, scorecard.Evidence{
 			Signal: "database usage", Method: scorecard.MethodFile,
 			Status: scorecard.StatusNotApplicable, Source: "filesystem",
-			Note: "no DB driver or migrations detected — category does not apply",
+			Note: "no DB driver, migrations, or database service detected — category does not apply",
 		})
 		c.Rationale = "Not applicable: no database detected."
 		return c
@@ -839,15 +843,49 @@ func dbMigrations(r *repo.Repo) scorecard.Category {
 	if driver != "" {
 		c.Signals = append(c.Signals, evNote("database driver/ORM", scorecard.MethodContent, driverWhere, driver))
 	}
+	if dbService {
+		c.Signals = append(c.Signals, evNote("local database service", scorecard.MethodContent, dbWhere, dbImage))
+	} else {
+		c.Signals = append(c.Signals, evAbsent("local database service", scorecard.MethodFile, ""))
+	}
 	if migrations {
 		c.Signals = append(c.Signals, evFound("migrations", scorecard.MethodFile, "migrations"))
-		c.Normalized, c.Rationale = 1.0, "Database in use with managed migrations."
 	} else {
 		c.Signals = append(c.Signals, evAbsent("migrations", scorecard.MethodFile, ""))
-		c.Normalized, c.Rationale = 0, "Database in use but no migrations found."
 	}
+	if seed {
+		c.Signals = append(c.Signals, evFound("seed data", scorecard.MethodFile, seedWhere))
+	} else {
+		c.Signals = append(c.Signals, evAbsent("seed data", scorecard.MethodFile, ""))
+	}
+
+	// Managed migrations are the core (and the hardest part); a local DB service to
+	// bring it up and seed data to populate it each round out clone→running.
+	var n float64
+	if migrations {
+		n += dbMigrationsCore
+	}
+	if dbService {
+		n += dbProvisionBonus
+	}
+	if seed {
+		n += dbSeedBonus
+	}
+	if n > 1 {
+		n = 1
+	}
+	c.Normalized = n
+	c.Rationale = "Local datastore provisioning: managed migrations (core) + a local DB service to bring it up + seed data to populate it."
 	return c
 }
+
+// db-migrations scoring weights: managed migrations carry the category; a local
+// DB service and seed data each round out clone→running for a DB-backed app.
+const (
+	dbMigrationsCore = 0.5
+	dbProvisionBonus = 0.25
+	dbSeedBonus      = 0.25
+)
 
 // --- detection helpers for the categories above ----------------------------
 
