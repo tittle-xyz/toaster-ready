@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.3.0...v0.4.0) (2026-06-29)
+
+
+### Features
+
+* **check:** reward an executable run command in setup-reproducibility ([#9](https://github.com/tittle-xyz/toaster-ready/issues/9)) ([a07a774](https://github.com/tittle-xyz/toaster-ready/commit/a07a7745823f7c41785be0d23c9540cc454c3edd))
+* **check:** score local datastore provisioning in db-migrations ([#11](https://github.com/tittle-xyz/toaster-ready/issues/11)) ([78e7c04](https://github.com/tittle-xyz/toaster-ready/commit/78e7c04fe2fea45f89c37459a362ccf9ebfb53a3))
+
 ## [0.3.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.2.0...v0.3.0) (2026-06-29)
 
 
