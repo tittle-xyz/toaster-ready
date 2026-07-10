@@ -138,6 +138,11 @@ func (r *Repo) Files() []string {
 	skip := map[string]bool{
 		".git": true, "node_modules": true, "vendor": true, ".terraform": true,
 		"dist": true, "build": true, ".next": true, "__pycache__": true,
+		// Python virtualenvs and tool caches — third-party code, never the
+		// repo's own source. Omitting these made the secret scan flag
+		// credentials inside installed packages (e.g. .venv/.../site-packages).
+		".venv": true, "venv": true, ".tox": true, ".mypy_cache": true,
+		".pytest_cache": true, ".ruff_cache": true, ".eggs": true,
 	}
 	var out []string
 	_ = filepath.Walk(r.Root, func(p string, info os.FileInfo, err error) error {
