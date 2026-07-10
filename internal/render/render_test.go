@@ -47,6 +47,28 @@ func TestShields(t *testing.T) {
 	}
 }
 
+func TestBadgeSVG(t *testing.T) {
+	for _, tc := range []struct {
+		score float64
+		msg   string
+		hex   string
+	}{
+		{40, "40 · needs-work", "#e05d44"},
+		{72, "72 · functional", "#dfb317"},
+		{90, "90 · exemplary", "#4c1"},
+	} {
+		out := BadgeSVG(scorecard.Scorecard{Score: tc.score})
+		if !strings.HasPrefix(out, "<svg") || !strings.Contains(out, "</svg>") {
+			t.Errorf("score %.0f: not a complete SVG\n%s", tc.score, out)
+		}
+		for _, want := range []string{"toaster-ready", tc.msg, `fill="` + tc.hex + `"`, `width="`} {
+			if !strings.Contains(out, want) {
+				t.Errorf("score %.0f: SVG missing %q\n%s", tc.score, want, out)
+			}
+		}
+	}
+}
+
 func TestMarkdownContents(t *testing.T) {
 	md := Markdown(sample())
 	for _, want := range []string{

@@ -16,6 +16,28 @@ import (
 	"github.com/tittle-xyz/toaster-ready/internal/scorecard"
 )
 
+const badgeLabel = "toaster-ready"
+
+// badgeColor returns the score band and the colors the badge outputs use: a
+// shields.io color keyword and the equivalent hex (for the standalone SVG).
+// Both Shields and BadgeSVG go through here so their colors can't drift.
+func badgeColor(score float64) (band, shields, hex string) {
+	band = scorecard.Band(score)
+	switch band {
+	case "exemplary":
+		return band, "brightgreen", "#4c1"
+	case "functional":
+		return band, "yellow", "#dfb317"
+	default:
+		return band, "red", "#e05d44"
+	}
+}
+
+// badgeText is the right-hand message shared by both badge outputs.
+func badgeText(sc scorecard.Scorecard) string {
+	return fmt.Sprintf("%.0f · %s", sc.Score, scorecard.Band(sc.Score))
+}
+
 // Shields renders the score as a shields.io endpoint-badge JSON document, so a
 // repo can show a live readiness badge in its README:
 //
@@ -25,22 +47,49 @@ import (
 // gh-pages) and point the endpoint query at it. Color tracks the score band.
 // See https://shields.io/badges/endpoint-badge.
 func Shields(sc scorecard.Scorecard) string {
-	band := scorecard.Band(sc.Score)
-	color := "red"
-	switch band {
-	case "functional":
-		color = "yellow"
-	case "exemplary":
-		color = "brightgreen"
-	}
+	_, color, _ := badgeColor(sc.Score)
 	payload := struct {
 		SchemaVersion int    `json:"schemaVersion"`
 		Label         string `json:"label"`
 		Message       string `json:"message"`
 		Color         string `json:"color"`
-	}{1, "toaster-ready", fmt.Sprintf("%.0f · %s", sc.Score, band), color}
+	}{1, badgeLabel, badgeText(sc), color}
 	b, _ := json.Marshal(payload)
 	return string(b)
+}
+
+// textWidth approximates the rendered width (px) of a string at the badge's
+// 11px sans font — good enough to size the segments without a font-metrics dep.
+func textWidth(s string) int {
+	return int(float64(len([]rune(s)))*6.5) + 10
+}
+
+// BadgeSVG renders a self-contained flat badge (no external service), for repos
+// that commit the badge and reference it directly:
+//
+//	![toaster-ready](docs/badge.svg)
+//
+// Color tracks the same score band as Shields.
+func BadgeSVG(sc scorecard.Scorecard) string {
+	_, _, hex := badgeColor(sc.Score)
+	msg := badgeText(sc)
+	lw, mw := textWidth(badgeLabel), textWidth(msg)
+	total := lw + mw
+	esc := html.EscapeString
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="20" role="img" aria-label="%s: %s">`,
+		total, esc(badgeLabel), esc(msg))
+	fmt.Fprintf(&b, `<title>%s: %s</title>`, esc(badgeLabel), esc(msg))
+	fmt.Fprintf(&b, `<clipPath id="r"><rect width="%d" height="20" rx="3"/></clipPath>`, total)
+	b.WriteString(`<g clip-path="url(#r)">`)
+	fmt.Fprintf(&b, `<rect width="%d" height="20" fill="#555"/>`, lw)
+	fmt.Fprintf(&b, `<rect x="%d" width="%d" height="20" fill="%s"/>`, lw, mw, hex)
+	b.WriteString(`</g>`)
+	b.WriteString(`<g fill="#fff" text-anchor="middle" font-family="Verdana,DejaVu Sans,Geneva,sans-serif" font-size="11">`)
+	fmt.Fprintf(&b, `<text x="%d" y="14">%s</text>`, lw/2, esc(badgeLabel))
+	fmt.Fprintf(&b, `<text x="%d" y="14">%s</text>`, lw+mw/2, esc(msg))
+	b.WriteString(`</g></svg>` + "\n")
+	return b.String()
 }
 
 type row struct {

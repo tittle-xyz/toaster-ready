@@ -128,6 +128,13 @@ toaster check . --offline --format shields > badge.json
 # ![toaster-ready](https://img.shields.io/endpoint?url=<raw-url-of-badge.json>)
 ```
 
+`--format svg` emits a self-contained badge to commit and reference directly — no hosting, works for private/offline repos:
+
+```sh
+toaster check . --offline --format svg > docs/badge.svg
+# ![toaster-ready](docs/badge.svg)
+```
+
 ## How it's built
 
 `toaster-ready` is built **AI-assisted and human-reviewed**, and it's transparent about that — it's a tool *about* agent-readiness, so it practices what it measures. The rigor behind it: decisions recorded as [ADRs](docs/adr/), a deterministic-by-design core (no LLM in the scoring path), real test coverage, an adversarial security/correctness/quality review before release, and — the proof — **`toaster-ready` scores itself**, and you can read the cited result. See [CONTRIBUTING.md](CONTRIBUTING.md).
