@@ -70,7 +70,7 @@ cd toaster-ready && make build   # -> ./bin/toaster
 ```sh
 toaster check <path|owner/repo>      # cited scorecard to stdout
   --offline                          # skip the GitHub API (API signals -> no-data)
-  --format json|markdown|html        # output format (default: json)
+  --format json|markdown|html|shields   # output format (default: json)
   --config <path>                    # config file (default: .toaster-ready.yml at the root)
 
 toaster gate <path|owner/repo>       # CI gate: non-zero exit on failure
