@@ -26,7 +26,7 @@ var (
 func init() {
 	checkCmd.Flags().BoolVar(&checkOffline, "offline", false, "skip GitHub API; report API signals as no-data")
 	checkCmd.Flags().StringVar(&checkConfig, "config", "", "path to a toaster config file (default: .toaster-ready.yml at the repo root)")
-	checkCmd.Flags().StringVar(&checkFormat, "format", "json", "output format: json | markdown | html")
+	checkCmd.Flags().StringVar(&checkFormat, "format", "json", "output format: json | markdown | html | shields")
 	rootCmd.AddCommand(checkCmd)
 }
 
@@ -59,8 +59,10 @@ var checkCmd = &cobra.Command{
 			fmt.Fprint(os.Stdout, render.Markdown(sc))
 		case "html":
 			fmt.Fprint(os.Stdout, render.HTML(sc))
+		case "shields":
+			fmt.Fprintln(os.Stdout, render.Shields(sc))
 		default:
-			return fmt.Errorf("unknown format %q (want json, markdown, or html)", checkFormat)
+			return fmt.Errorf("unknown format %q (want json, markdown, html, or shields)", checkFormat)
 		}
 		return nil
 	},
