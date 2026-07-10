@@ -96,6 +96,23 @@ Gate any repo's CI on ramp-up readiness — the scorecard is written to the job 
     # config: .toaster-ready.yml
 ```
 
+### Publish a readiness badge
+
+Set `badge` to a path and the Action writes the badge there (format inferred from the extension — `.svg` self-contained, `.json` a shields endpoint); commit it in a following step to keep the README badge current:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: tittle-xyz/toaster-ready@v0
+  with:
+    badge: docs/badge.svg          # or badge.json for a shields endpoint
+- uses: stefanzweifel/git-auto-commit-action@v5
+  with:
+    commit_message: update readiness badge
+    file_pattern: docs/badge.svg
+```
+
+Then reference it: `![toaster-ready](docs/badge.svg)`. The badge is written before the gate, so it refreshes even when the gate fails.
+
 ## Configuration
 
 Drop a `.toaster-ready.yml` at the repo root to override the defaults. With no config, the built-in (opinionated) defaults apply. Everything is optional:

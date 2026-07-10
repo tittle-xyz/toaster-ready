@@ -22,6 +22,10 @@ inputs:
     description: 'Version of toaster-ready to install (e.g. v0.1.1 or latest).'
     required: false
     default: 'latest'
+  badge:
+    description: 'Write a readiness badge to this path (e.g. docs/badge.svg or badge.json); format is inferred from the extension (.svg | .json). Empty = off. Commit it in a following step to publish.'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -46,6 +50,22 @@ runs:
       run: |
         # Surface the scorecard in the job summary (best-effort; never fails the build).
         toaster check "$TARGET" --offline --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+    - name: Write badge
+      if: ${{ inputs.badge != '' }}
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        BADGE: ${{ inputs.badge }}
+      run: |
+        case "$BADGE" in
+          *.svg) fmt=svg ;;
+          *)     fmt=shields ;;
+        esac
+        mkdir -p "$(dirname "$BADGE")"
+        # Runs before the gate, so the badge is refreshed even when the gate fails.
+        toaster check "$TARGET" --offline --format "$fmt" > "$BADGE"
+        echo "Wrote $fmt badge to $BADGE"
 
     - name: Gate
       shell: bash
