@@ -7,6 +7,7 @@
 package render
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"strconv"
@@ -14,6 +15,33 @@ import (
 
 	"github.com/tittle-xyz/toaster-ready/internal/scorecard"
 )
+
+// Shields renders the score as a shields.io endpoint-badge JSON document, so a
+// repo can show a live readiness badge in its README:
+//
+//	![toaster-ready](https://img.shields.io/endpoint?url=<raw-json-url>)
+//
+// Host the JSON where it has a stable raw URL (a committed file, a gist, or
+// gh-pages) and point the endpoint query at it. Color tracks the score band.
+// See https://shields.io/badges/endpoint-badge.
+func Shields(sc scorecard.Scorecard) string {
+	band := scorecard.Band(sc.Score)
+	color := "red"
+	switch band {
+	case "functional":
+		color = "yellow"
+	case "exemplary":
+		color = "brightgreen"
+	}
+	payload := struct {
+		SchemaVersion int    `json:"schemaVersion"`
+		Label         string `json:"label"`
+		Message       string `json:"message"`
+		Color         string `json:"color"`
+	}{1, "toaster-ready", fmt.Sprintf("%.0f · %s", sc.Score, band), color}
+	b, _ := json.Marshal(payload)
+	return string(b)
+}
 
 type row struct {
 	title, score, contribution, notes string

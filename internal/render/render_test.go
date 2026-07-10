@@ -23,6 +23,30 @@ func sample() scorecard.Scorecard {
 	}
 }
 
+func TestShields(t *testing.T) {
+	for _, tc := range []struct {
+		score float64
+		band  string
+		color string
+	}{
+		{40, "needs-work", "red"},
+		{72, "functional", "yellow"},
+		{90, "exemplary", "brightgreen"},
+	} {
+		out := Shields(scorecard.Scorecard{Score: tc.score})
+		for _, want := range []string{
+			`"schemaVersion":1`,
+			`"label":"toaster-ready"`,
+			tc.band,
+			`"color":"` + tc.color + `"`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("score %.0f: shields output missing %q\n%s", tc.score, want, out)
+			}
+		}
+	}
+}
+
 func TestMarkdownContents(t *testing.T) {
 	md := Markdown(sample())
 	for _, want := range []string{

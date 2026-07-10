@@ -121,6 +121,12 @@ Unknown category ids are rejected — the category set is fixed.
 ## Output
 
 A single JSON document per repo, pinned to the scored git SHA, with a timestamp and rubric version. Categories carry their weight, normalized subscore, contribution, cited evidence, and — for anything below the bar — **recommendations** (cause + what to do). `--format markdown|html` renders the same data for PR comments or job summaries.
+`--format shields` emits a [shields.io endpoint](https://shields.io/badges/endpoint-badge) JSON so a repo can show a live readiness badge — write it somewhere with a stable raw URL (a committed file, a gist, or gh-pages) and reference it:
+
+```sh
+toaster check . --offline --format shields > badge.json
+# ![toaster-ready](https://img.shields.io/endpoint?url=<raw-url-of-badge.json>)
+```
 
 ## How it's built
 
