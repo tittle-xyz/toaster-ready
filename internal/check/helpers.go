@@ -302,6 +302,26 @@ func justRecipes(r *repo.Repo) map[string]bool {
 	return set
 }
 
+// pyprojectToolRe matches a PEP 518 tool table header, capturing the tool name:
+// `[tool.ruff]` and `[tool.ruff.lint]` both yield "ruff".
+var pyprojectToolRe = regexp.MustCompile(`(?m)^\s*\[tool\.([A-Za-z0-9_-]+)`)
+
+// pyprojectTools returns the set of tools configured in pyproject.toml. PEP 518
+// is the convention Python consolidated on, so a repo that configures ruff there
+// instead of in a standalone ruff.toml is more conventional, not less — matching
+// only exact config filenames makes the whole practice invisible.
+func pyprojectTools(r *repo.Repo) map[string]bool {
+	set := map[string]bool{}
+	body, err := r.Read("pyproject.toml")
+	if err != nil {
+		return set
+	}
+	for _, m := range pyprojectToolRe.FindAllStringSubmatch(body, -1) {
+		set[strings.ToLower(m[1])] = true
+	}
+	return set
+}
+
 // --- runnable runbook detection --------------------------------------------
 
 // runCmdRe matches a recognized "run the app" command (issue #3's allow-list).
@@ -318,10 +338,61 @@ var runCmdRe = regexp.MustCompile(`(?i)\b(?:` +
 	`|flask\s+run\b` +
 	`|(?:uvicorn|gunicorn|hypercorn)\b` +
 	`|manage\.py\s+runserver` +
+	`|(?:streamlit|chainlit)\s+run\b` +
+	`|dagster\s+dev\b` +
+	`|fastapi\s+(?:dev|run)\b` +
+	`|celery\b[^\n]*\bworker\b` +
 	`|rails\s+(?:server|s)\b` +
 	`|artisan\s+serve` +
 	`|gradlew\b[^\n]*\bbootRun` +
 	`)`)
+
+// pyRunRe matches Python's own way of starting something: `python -m <module>`,
+// optionally behind an environment runner (`uv run`, `poetry run`, …), or a
+// runner invoking a target directly (`uv run <target>`). Group 1 is the module
+// or target, which the caller checks against pyNotRun — the allow-list is about
+// starting, and `python -m pytest` is a test. A separate regex rather than an
+// arm of runCmdRe because RE2 has no lookahead to express the exclusion inline.
+var pyRunRe = regexp.MustCompile(`(?i)\b(?:` +
+	`(?:uv|uvx|poetry|pipenv|pdm|hatch|rye)\s+run\s+(?:python[0-9.]*\s+-m\s+)?` +
+	`|python[0-9.]*\s+-m\s+` +
+	`)([A-Za-z_][A-Za-z0-9_.-]*)`)
+
+// pyScriptRe matches `python path/to/script.py` — the other half of "just run
+// it" for Python — capturing the script so its name can be checked against
+// pyNotRun (`python setup.py sdist` packages, it doesn't start anything).
+// `python -m pytest tests/x.py` can't match: the character class stops at
+// whitespace, so it never reaches the .py past the module name.
+var pyScriptRe = regexp.MustCompile(`(?i)\bpython[0-9.]*\s+([^\s;|&]*\.py)\b`)
+
+// pyNotRun are `python -m` / runner targets that build, test, or lint rather
+// than start the app — the same line `make build` and `npm test` sit on.
+var pyNotRun = map[string]bool{
+	"pytest": true, "unittest": true, "tox": true, "nox": true, "coverage": true,
+	"build": true, "venv": true, "virtualenv": true, "pip": true, "ensurepip": true,
+	"pipx": true, "twine": true, "compileall": true, "setup.py": true,
+	"black": true, "ruff": true, "mypy": true, "flake8": true, "isort": true,
+	"pylint": true, "pyright": true, "pre-commit": true, "pre_commit": true,
+}
+
+// hasRunCommand reports whether code (the code spans of a document, never its
+// prose) contains a recognized "run the app" command.
+func hasRunCommand(code string) bool {
+	if runCmdRe.MatchString(code) {
+		return true
+	}
+	for _, m := range pyRunRe.FindAllStringSubmatch(code, -1) {
+		if !pyNotRun[strings.ToLower(m[1])] {
+			return true
+		}
+	}
+	for _, m := range pyScriptRe.FindAllStringSubmatch(code, -1) {
+		if !pyNotRun[strings.ToLower(filepath.Base(filepath.ToSlash(m[1])))] {
+			return true
+		}
+	}
+	return false
+}
 
 // endpointRe spots a reachable local endpoint/port near the run command — the
 // "and here's where the app comes up" half of issue #3. It strengthens the
@@ -351,7 +422,7 @@ func runnableRunbook(r *repo.Repo) (src string, hasEndpoint bool, ok bool) {
 			continue
 		}
 		fenced := fencedText(body)
-		if runCmdRe.MatchString(fenced) {
+		if hasRunCommand(fenced) {
 			return f, endpointRe.MatchString(fenced), true
 		}
 	}
