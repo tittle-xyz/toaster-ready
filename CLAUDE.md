@@ -50,4 +50,5 @@ make gate       # toaster-ready scores ITSELF and must pass its own gate
 ## Gotchas
 
 - The secret scan reads the **working tree only**, not git history. A clean tree can still have secrets in history.
+- The file walk (`repo.Files()`) skips what **git ignores** — a gitignored `.env` is not part of the repo, and scanning it made the same commit score differently locally than in CI. Ignore data comes from `git status --ignored`, which is index-aware, so a file that matches an ignore pattern but was *committed anyway* is still walked and still flagged. A non-git tree has no ignore rules to consult and is walked whole.
 - `toaster gate` uses the offline stub by design — it's a pure local floor, so its printed `total` excludes live CI; the pass/fail decision is based on critical-dimension presence + the secret cap, not the total.

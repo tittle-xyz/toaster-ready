@@ -22,7 +22,7 @@ import (
 )
 
 // RubricVersion is bumped whenever categories or scoring change.
-const RubricVersion = "2.3"
+const RubricVersion = "2.4"
 
 // Signal names for the agent-instructions facets. recommend() keys on these so
 // a bloated/stale/drifted-but-present file gets "fix it" advice rather than
@@ -607,6 +607,16 @@ func conventionsStandards(r *repo.Repo, gh githubclient.Client) scorecard.Catego
 			found = append(found, l)
 		}
 	}
+	// A Python linter configured in pyproject.toml counts the same as its
+	// standalone config file. Named explicitly, not any [tool.*] table, so that
+	// packaging config ([tool.poetry]) doesn't read as a lint standard.
+	if tools := pyprojectTools(r); len(tools) > 0 {
+		for _, name := range pyLinters {
+			if tools[name] {
+				found = append(found, "pyproject.toml [tool."+name+"]")
+			}
+		}
+	}
 	codeowners := r.FirstExisting("CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS")
 	tags := r.GitTags()
 
@@ -918,9 +928,18 @@ func hasTests(r *repo.Repo) bool {
 var coverageConfigs = []string{"codecov.yml", ".codecov.yml", "codecov.yaml", ".github/codecov.yml", ".coveralls.yml", ".coveragerc"}
 var coverageKeywords = []string{"codecov", "coveralls", "coverage", "-cover", "--cov", "go test -cover"}
 
+// pyLinters are the lint/format/type tools whose presence in a pyproject.toml
+// [tool.*] table is a conventions signal (see pyprojectTools).
+var pyLinters = []string{"ruff", "black", "flake8", "isort", "mypy", "pylint", "pyright", "yapf"}
+
 func hasCoverage(r *repo.Repo, stacks detect.Result) (bool, string) {
 	if f := r.FirstExisting(coverageConfigs...); f != "" {
 		return true, f
+	}
+	// [tool.coverage] is coverage.py's canonical config home — the same PEP 518
+	// gap as the linters above.
+	if pyprojectTools(r)["coverage"] {
+		return true, "pyproject.toml"
 	}
 	for _, id := range stacks.IDs() {
 		for _, g := range detect.ProfileFor(id).CoverageGlobs {

@@ -176,6 +176,59 @@ func TestGateThresholdGatesGoodRepo(t *testing.T) {
 	}
 }
 
+// A gitignored .env is where secrets are *supposed* to live — it never reaches
+// the repo, so it must not trip the secret floor or the gate. Before this, the
+// scorecard contradicted itself (crediting ".gitignore covers .env" while
+// flagging .env as a hardcoded secret) and the same commit failed `gate`
+// locally but passed in CI, where a fresh clone has no .env (issue #22).
+func TestGitignoredEnvDoesNotTripSecretFloor(t *testing.T) {
+	dir := newGitRepo(t)
+	for rel, body := range map[string]string{
+		".gitignore":   ".env\n",
+		".env.example": "API_KEY=\n",
+		".env":         "api_key = \"sk_live_abcd1234efgh5678\"\n",
+		"app.py":       "import os\n\nkey = os.environ[\"API_KEY\"]\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commit(t, dir, "init")
+
+	sc := scoreDir(t, dir)
+	c := cat(sc, scorecard.CatConfigSecrets)
+	for _, e := range c.Signals {
+		if e.Signal == "hardcoded secret" {
+			t.Errorf("gitignored %s must not be scanned for secrets", e.Path)
+		}
+	}
+	if c.Normalized != 1 {
+		t.Errorf("config-and-secrets = %v, want 1.0 (.env.example present, no secrets in the repo)", c.Normalized)
+	}
+	if f := GateFailures(sc, 0); hasFailureContaining(f, "hardcoded secrets") {
+		t.Errorf("gitignored .env must not fail the gate, got %v", f)
+	}
+}
+
+// The mirror: only *ignored* is exempt, not merely untracked. An unignored .env
+// is one `git add -A` from being published, so it is still a real finding.
+func TestUntrackedUnignoredEnvStillTripsSecretFloor(t *testing.T) {
+	dir := newGitRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commit(t, dir, "init")
+	// Written after the commit and covered by no ignore rule: untracked, but
+	// nothing is stopping it from being committed.
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("api_key = \"sk_live_abcd1234efgh5678\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if f := GateFailures(scoreDir(t, dir), 0); !hasFailureContaining(f, "hardcoded secrets") {
+		t.Errorf("an unignored .env is still a leak, got %v", f)
+	}
+}
+
 func writeRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()

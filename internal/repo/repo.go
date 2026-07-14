@@ -129,8 +129,13 @@ func (r *Repo) Glob(pattern string) []string {
 	return out
 }
 
-// Files lazily walks the tree once, skipping noise dirs, and caches the result
-// as relative paths. Used by the secret scanner.
+// Files lazily walks the tree once, skipping noise dirs and anything git
+// ignores, and caches the result as relative paths. Used by the secret scanner.
+//
+// Ignored paths are excluded because they are not part of the repository: a
+// fresh clone doesn't have them, so scoring them makes the same commit score
+// differently for a contributor with a populated .env than it does in CI. The
+// scorecard describes the repo, not one machine's working tree.
 func (r *Repo) Files() []string {
 	if r.fileCache != nil {
 		return r.fileCache
@@ -144,15 +149,25 @@ func (r *Repo) Files() []string {
 		".venv": true, "venv": true, ".tox": true, ".mypy_cache": true,
 		".pytest_cache": true, ".ruff_cache": true, ".eggs": true,
 	}
+	ignored := r.gitIgnored()
 	var out []string
 	_ = filepath.Walk(r.Root, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
+		rel, relErr := filepath.Rel(r.Root, p)
+		if relErr != nil {
+			return nil
+		}
 		if info.IsDir() {
-			if skip[info.Name()] {
+			// git collapses a wholly-ignored directory to one entry, so pruning
+			// here also keeps its contents from consuming the maxWalkFiles cap.
+			if skip[info.Name()] || (rel != "." && ignored[filepath.ToSlash(rel)]) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		if ignored[filepath.ToSlash(rel)] {
 			return nil
 		}
 		if info.Size() > 512*1024 { // skip large/binary-ish files
@@ -161,12 +176,51 @@ func (r *Repo) Files() []string {
 		if len(out) >= maxWalkFiles { // bound pathological repos
 			return filepath.SkipAll
 		}
-		rel, _ := filepath.Rel(r.Root, p)
 		out = append(out, rel)
 		return nil
 	})
 	r.fileCache = out
 	return out
+}
+
+// gitIgnored returns the paths git ignores, relative to r.Root and slash-separated.
+// Wholly-ignored directories appear as their own entry (without a trailing slash)
+// rather than as their contents, so callers can prune the walk at the directory.
+//
+// A non-git tree — or any git failure — yields an empty set, i.e. the walk sees
+// everything, which is what it did before ignore-awareness existed. That is a
+// deliberate fallback and not a no-data determination: the walk feeds signals, it
+// isn't one, and the checks it feeds still report ok/absent honestly on what they
+// were given.
+func (r *Repo) gitIgnored() map[string]bool {
+	set := map[string]bool{}
+	// Porcelain paths are relative to the *repository* root; when r.Root is a
+	// subdirectory of the repo, --show-prefix is how much of that to strip. This
+	// also doubles as the is-this-a-git-tree test.
+	prefix, err := exec.Command("git", "-C", r.Root, "rev-parse", "--show-prefix").Output()
+	if err != nil {
+		return set
+	}
+	// --no-optional-locks keeps a scoring run from taking the index lock; -z
+	// avoids git's path quoting; traditional collapses ignored dirs to one entry.
+	out, err := exec.Command("git", "--no-optional-locks", "-C", r.Root, "status",
+		"--porcelain", "-z", "--ignored=traditional").Output()
+	if err != nil {
+		// Exit 1 has no special meaning for status, so any error means we simply
+		// don't know what's ignored.
+		return set
+	}
+	sub := strings.TrimSpace(string(prefix))
+	for _, entry := range strings.Split(string(out), "\x00") {
+		rel, ok := strings.CutPrefix(entry, "!! ")
+		if !ok {
+			continue
+		}
+		if rel, ok = strings.CutPrefix(rel, sub); ok {
+			set[strings.TrimSuffix(rel, "/")] = true
+		}
+	}
+	return set
 }
 
 // GitTags returns local git tags (used as a semver signal).
