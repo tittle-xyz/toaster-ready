@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.0...v0.4.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* close three Python scoring gaps ([#22](https://github.com/tittle-xyz/toaster-ready/issues/22)) ([#23](https://github.com/tittle-xyz/toaster-ready/issues/23)) ([71581da](https://github.com/tittle-xyz/toaster-ready/commit/71581da468627d73157c26a1a30abc7046d69ebc))
+
 ## [0.4.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.3.0...v0.4.0) (2026-06-29)
 
 
