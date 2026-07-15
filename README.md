@@ -89,7 +89,7 @@ Gate any repo's CI on ramp-up readiness — the scorecard is written to the job 
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: tittle-xyz/toaster-ready@v0   # or pin a full version, e.g. @v0.2.0
+- uses: tittle-xyz/toaster-ready@v0   # tracks the latest v0.x; or pin a full version, e.g. @v0.4.1
   with:
     min: 50          # fail below this score (optional; default uses config, else 50)
     # target: .      # path or owner/repo (default: the checked-out repo)
