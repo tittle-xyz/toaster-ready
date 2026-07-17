@@ -7,3 +7,6 @@
 # editor / OS
 .DS_Store
 *.swp
+
+# Coverage artifact from `make coverage`.
+/coverage.out

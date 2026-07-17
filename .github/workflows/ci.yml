@@ -26,7 +26,7 @@ jobs:
         run: make vet
 
       - name: Test
-        run: make test
+        run: make coverage
 
       - name: Build
         run: make build

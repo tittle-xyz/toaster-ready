@@ -11,6 +11,8 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      pr: ${{ steps.release.outputs.pr }}
     steps:
       # Maintains a release PR from Conventional Commits; on merge, tags +
       # creates the GitHub Release + CHANGELOG.
@@ -48,3 +50,33 @@ jobs:
           major="v${{ steps.release.outputs.major }}"
           git tag -f "$major"
           git push -f origin "$major"
+
+  # Keep our own badge honest, using our own action. If the badge in this README
+  # can't be produced by the documented recipe, the recipe is wrong.
+  #
+  # It refreshes on the release PR because main is protected here and the Actions
+  # bot cannot push to it — and because a badge that tracks releases is the one
+  # people actually want.
+  badge:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJson(needs.release-please.outputs.pr).headBranchName }}
+
+      # The action from this branch, not a released one: dogfooding it here is how
+      # we find out it's broken before anyone else does.
+      - uses: ./
+        with:
+          # The repo, not the branch we're standing on — a release branch carries
+          # commits main doesn't, which moves the git-based signals.
+          target: ${{ github.repository }}
+          badge: docs/badge.svg
+          commit: true
+          # No gate: a release PR is not the place to discover the score slipped,
+          # and ci.yml already gates every push.
+          min: '0'

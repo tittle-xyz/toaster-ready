@@ -23,9 +23,29 @@ inputs:
     required: false
     default: 'latest'
   badge:
-    description: 'Write a readiness badge to this path (e.g. docs/badge.svg or badge.json); format is inferred from the extension (.svg | .json). Empty = off. Commit it in a following step to publish.'
+    description: >
+      Write a readiness badge to this path (e.g. docs/badge.svg or badge.json);
+      format is inferred from the extension (.svg | .json). Empty = off. Pair with
+      `commit: true`, or commit it yourself in a following step.
     required: false
     default: ''
+  commit:
+    description: >
+      Commit and push the badge to the current branch when it changes. Off by
+      default. Needs `contents: write` and a branch the workflow token may push to
+      — a protected default branch will reject it, so refresh the badge on a
+      release PR branch rather than on main.
+    required: false
+    default: 'false'
+  token:
+    description: >
+      Token for the API-backed signals (latest CI run, branch protection). Defaults
+      to the workflow token, which is sufficient for both on the repo being scored.
+      Without one the score lands ~6 points low on a runner: Actions IPs share the
+      unauthenticated API allowance and it is reliably spent, so the lookups 403 and
+      report no-data. Pass an empty string to score without the API on purpose.
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: 'composite'
@@ -47,9 +67,10 @@ runs:
       shell: bash
       env:
         TARGET: ${{ inputs.target }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
-        # Surface the scorecard in the job summary (best-effort; never fails the build).
-        toaster check "$TARGET" --offline --format markdown >> "$GITHUB_STEP_SUMMARY" || true
+        # Best-effort; never fails the build.
+        toaster check "$TARGET" --format markdown >> "$GITHUB_STEP_SUMMARY" || true
 
     - name: Write badge
       if: ${{ inputs.badge != '' }}
@@ -57,6 +78,7 @@ runs:
       env:
         TARGET: ${{ inputs.target }}
         BADGE: ${{ inputs.badge }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         case "$BADGE" in
           *.svg) fmt=svg ;;
@@ -64,8 +86,24 @@ runs:
         esac
         mkdir -p "$(dirname "$BADGE")"
         # Runs before the gate, so the badge is refreshed even when the gate fails.
-        toaster check "$TARGET" --offline --format "$fmt" > "$BADGE"
+        toaster check "$TARGET" --format "$fmt" > "$BADGE"
         echo "Wrote $fmt badge to $BADGE"
+
+    - name: Commit badge
+      if: ${{ inputs.badge != '' && inputs.commit == 'true' }}
+      shell: bash
+      env:
+        BADGE: ${{ inputs.badge }}
+      run: |
+        if git diff --quiet -- "$BADGE" 2>/dev/null; then
+          echo "badge unchanged"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$BADGE"
+        git commit -m "chore: refresh readiness badge"
+        git push
 
     - name: Gate
       shell: bash
@@ -73,6 +111,7 @@ runs:
         TARGET: ${{ inputs.target }}
         MIN: ${{ inputs.min }}
         CONFIG: ${{ inputs.config }}
+        GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         flags=()
         if [ -n "$MIN" ]; then flags+=(--min "$MIN"); fi
