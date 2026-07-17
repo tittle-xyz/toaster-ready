@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"time"
 
@@ -34,8 +35,23 @@ func New() (*GoGitHub, string) {
 	return &GoGitHub{gh: c}, src
 }
 
-// LatestRunGreen reports whether the most recent Actions run on the default
-// branch concluded successfully.
+// LatestRunGreen reports whether the most recent CI run on the default branch
+// concluded successfully.
+//
+// Two decisions here are load-bearing, and both came from getting it wrong.
+//
+// It asks only for COMPLETED runs. Asking for the newest run of any status meant
+// the answer depended on whether anything happened to be running: a repo with two
+// workflows on `push: main` has runs racing, and if the newest was in progress the
+// whole category went no-data. That bit hardest when toaster ran inside Actions,
+// because the workflow doing the scoring is itself a run on the default branch and
+// cannot be complete while it is running — the scoring run docked the repo for its
+// own existence, and the score flipped between two values on identical commits.
+//
+// It then prefers a run from a workflow that looks like CI. Filtering to completed
+// runs alone would have swapped a flake for a lie: when tests fail and a release or
+// publish workflow succeeds a minute later, the newest completed run is green and
+// the repo reads green with red tests. A false green is worse than no answer.
 func (g *GoGitHub) LatestRunGreen(slug string) Result {
 	owner, name, ok := splitSlug(slug)
 	if !ok {
@@ -52,23 +68,74 @@ func (g *GoGitHub) LatestRunGreen(slug string) Result {
 
 	runs, _, err := g.gh.Actions.ListRepositoryWorkflowRuns(ctx, owner, name, &github.ListWorkflowRunsOptions{
 		Branch:      branch,
-		ListOptions: github.ListOptions{PerPage: 1},
+		Status:      "completed",
+		ListOptions: github.ListOptions{PerPage: 30},
 	})
 	if err != nil {
 		return apiNoData("workflow runs", err)
 	}
 	if runs.GetTotalCount() == 0 || len(runs.WorkflowRuns) == 0 {
-		return NoData("no workflow runs on default branch " + branch)
+		return NoData("no completed workflow runs on default branch " + branch)
 	}
-	run := runs.WorkflowRuns[0]
-	conclusion := run.GetConclusion() // success | failure | cancelled | "" (in progress)
-	if run.GetStatus() != "completed" {
-		return NoData(fmt.Sprintf("latest run still %s", run.GetStatus()))
+
+	run, viaFallback := pickCIRun(runs.WorkflowRuns)
+	detail := fmt.Sprintf("branch=%s workflow=%s conclusion=%s",
+		branch, workflowFile(run), run.GetConclusion())
+	if viaFallback {
+		// Say so. A repo whose automation is only `deploy.yml` gets an answer, but
+		// the reader should know it isn't a claim about tests.
+		detail += " (no CI-looking workflow; used the newest completed run)"
 	}
 	return Result{
-		OK:     conclusion == "success",
-		Detail: fmt.Sprintf("branch=%s conclusion=%s", branch, conclusion),
+		OK:     run.GetConclusion() == "success",
+		Detail: detail,
 	}
+}
+
+// ciWorkflowNames are filename stems that conventionally mean "this workflow is
+// the tests". Matched against the workflow's path — ".github/workflows/ci.yml" —
+// because a file name is a convention, while a workflow's display name is prose.
+var ciWorkflowNames = map[string]bool{
+	"ci": true, "test": true, "tests": true, "build": true,
+	"check": true, "checks": true, "verify": true, "validate": true, "lint": true,
+}
+
+// pickCIRun returns the newest run from a CI-looking workflow, falling back to the
+// newest run of any workflow. The input is assumed newest-first, which is what the
+// API returns. The second return reports whether the fallback was used.
+func pickCIRun(runs []*github.WorkflowRun) (*github.WorkflowRun, bool) {
+	for _, run := range runs {
+		if looksLikeCI(run) {
+			return run, false
+		}
+	}
+	return runs[0], true
+}
+
+// looksLikeCI splits a workflow's file stem on the usual separators and asks
+// whether any part names a CI concern. "ci.yml" and "build-test.yml" match;
+// "release-please.yml" and "docker-publish.yml" don't, which is the point.
+func looksLikeCI(run *github.WorkflowRun) bool {
+	stem := workflowFile(run)
+	stem = strings.TrimSuffix(stem, ".yml")
+	stem = strings.TrimSuffix(stem, ".yaml")
+	for _, part := range strings.FieldsFunc(strings.ToLower(stem), func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == ' '
+	}) {
+		if ciWorkflowNames[part] {
+			return true
+		}
+	}
+	return false
+}
+
+// workflowFile is the base name of a run's workflow file, falling back to the
+// run's display name when the API didn't give a path.
+func workflowFile(run *github.WorkflowRun) string {
+	if p := run.GetPath(); p != "" {
+		return path.Base(p)
+	}
+	return run.GetName()
 }
 
 // BranchProtected reports whether the default branch has protection rules. A
