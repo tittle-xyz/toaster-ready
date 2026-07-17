@@ -1,6 +1,7 @@
 # toaster-ready
 
 [![ci](https://github.com/tittle-xyz/toaster-ready/actions/workflows/ci.yml/badge.svg)](https://github.com/tittle-xyz/toaster-ready/actions/workflows/ci.yml)
+[![toaster-ready](docs/badge.svg)](#the-rubric)
 [![release](https://img.shields.io/github/v/release/tittle-xyz/toaster-ready)](https://github.com/tittle-xyz/toaster-ready/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -58,11 +59,14 @@ Every signal is `ok` (a real determination — found or absent), `no-data` (coul
 go install github.com/tittle-xyz/toaster-ready/cmd/toaster@latest
 ```
 
-Or build from source:
+Or build from source, and see it work on itself:
 
 ```sh
 git clone https://github.com/tittle-xyz/toaster-ready
-cd toaster-ready && make build   # -> ./bin/toaster
+cd toaster-ready
+make build      # -> ./bin/toaster
+make run        # score this repo, with this repo
+make test       # or: make coverage
 ```
 
 ## Usage
@@ -98,20 +102,63 @@ Gate any repo's CI on ramp-up readiness — the scorecard is written to the job 
 
 ### Publish a readiness badge
 
-Set `badge` to a path and the Action writes the badge there (format inferred from the extension — `.svg` self-contained, `.json` a shields endpoint); commit it in a following step to keep the README badge current:
+Set `badge` to a path and the Action writes the badge there (format inferred from the extension — `.svg` self-contained, `.json` a shields endpoint). Add `commit: true` and it commits and pushes the badge when the score moves:
 
 ```yaml
 - uses: actions/checkout@v4
 - uses: tittle-xyz/toaster-ready@v0
   with:
     badge: docs/badge.svg          # or badge.json for a shields endpoint
-- uses: stefanzweifel/git-auto-commit-action@v5
-  with:
-    commit_message: update readiness badge
-    file_pattern: docs/badge.svg
+    commit: true
 ```
 
 Then reference it: `![toaster-ready](docs/badge.svg)`. The badge is written before the gate, so it refreshes even when the gate fails.
+
+**Where to run it.** `commit: true` pushes to the branch you are on, so it needs
+`permissions: contents: write` and a branch the workflow token may push to. A
+protected default branch rejects that push — the Actions bot is not an admin. The
+place that works is a release PR branch, which isn't protected, and which gives the
+badge a sensible cadence besides: it tracks releases rather than every commit. With
+[release-please](https://github.com/googleapis/release-please):
+
+```yaml
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      pr: ${{ steps.release.outputs.pr }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+
+  badge:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.pr }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJson(needs.release-please.outputs.pr).headBranchName }}
+      - uses: tittle-xyz/toaster-ready@v0
+        with:
+          target: ${{ github.repository }}   # score the repo, not this branch
+          badge: docs/badge.svg
+          commit: true
+```
+
+Two details there are worth the words.
+
+**`target` is the repo slug, not the checkout.** A release branch carries commits
+the default branch doesn't, and that moves git-based signals — instructions
+freshness especially. Scoring the branch scores something slightly different from
+the repo the badge claims to describe.
+
+**The badge is scored with the API**, using the workflow token (see the `token`
+input). Without a token it reads several points low: Actions runners share the
+unauthenticated API allowance, it's reliably spent, the CI-status lookup 403s, and
+the category goes no-data.
 
 ## Configuration
 

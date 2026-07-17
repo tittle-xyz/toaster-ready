@@ -1,12 +1,23 @@
 BINARY := ./bin/toaster
+COVERAGE := coverage.out
 
-.PHONY: build test vet fmt fmt-check lint check gate clean
+.PHONY: build run test coverage vet fmt fmt-check lint check gate clean
 
 build:
 	go build -o $(BINARY) ./cmd/toaster
 
+# Clone -> see it work, in one command: score this repo with this repo.
+run: build
+	$(BINARY) check .
+
 test:
 	go test ./...
+
+# Reported, not gated. A number that has to go up forever gets satisfied with
+# tests nobody reads; this exists to show what isn't exercised.
+coverage:
+	go test -coverprofile=$(COVERAGE) ./...
+	@go tool cover -func=$(COVERAGE) | tail -1
 
 vet:
 	go vet ./...
@@ -28,4 +39,4 @@ gate: build
 	$(BINARY) gate .
 
 clean:
-	rm -rf ./bin
+	rm -rf ./bin $(COVERAGE)
