@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.2...v0.5.0) (2026-07-17)
+
+
+### Features
+
+* give the action a token and a commit step, and take our own advice ([#31](https://github.com/tittle-xyz/toaster-ready/issues/31)) ([c9da47e](https://github.com/tittle-xyz/toaster-ready/commit/c9da47e03b196410bed201b91eb660994bebaf4e))
+
 ## [0.4.2](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.1...v0.4.2) (2026-07-17)
 
 
