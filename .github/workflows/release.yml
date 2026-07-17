@@ -16,7 +16,7 @@ jobs:
     steps:
       # Maintains a release PR from Conventional Commits; on merge, tags +
       # creates the GitHub Release + CHANGELOG.
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           release-type: go
@@ -28,13 +28,13 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         if: ${{ steps.release.outputs.release_created }}
         with:
           go-version: stable
 
       # Build cross-platform binaries + checksums and attach them to the release.
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         if: ${{ steps.release.outputs.release_created }}
         with:
           version: "~> v2"
