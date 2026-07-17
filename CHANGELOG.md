@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.1...v0.4.2) (2026-07-17)
+
+
+### Bug Fixes
+
+* judge CI from the newest completed run of a CI workflow ([#29](https://github.com/tittle-xyz/toaster-ready/issues/29)) ([63c9c66](https://github.com/tittle-xyz/toaster-ready/commit/63c9c6609c68f92717d9dfb758331f5becaf82b5))
+
 ## [0.4.1](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.0...v0.4.1) (2026-07-14)
 
 
