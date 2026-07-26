@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   release:
-    uses: tittle-xyz/go-shared-build/.github/workflows/go-release-cli.yml@v0.5.0
+    uses: tittle-xyz/go-shared-build/.github/workflows/go-release-cli.yml@v0.6.0
     with:
       # This repo is consumed as a GitHub Action (`uses: tittle-xyz/toaster-ready@v0`),
       # so the major tag has to keep moving to the latest release in the series.
