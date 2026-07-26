@@ -28,7 +28,7 @@ var configCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 
 		cfg, path, err := config.Load(r.Root, configFile)
 		if err != nil {

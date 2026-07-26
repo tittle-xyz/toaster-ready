@@ -25,7 +25,7 @@ var detectCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 
 		res := detect.Detect(r)
 		enc := json.NewEncoder(os.Stdout)
