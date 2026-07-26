@@ -4,6 +4,10 @@ name: ci
 # See: https://github.com/tittle-xyz/go-shared-build
 on:
   pull_request:
+    # `edited` matters: the pr-title check reads the PR title, and without it a
+    # rename does not re-run the check — leaving a corrected title still showing
+    # red. The default types are opened/synchronize/reopened only.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
