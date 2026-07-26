@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.5.0...v0.6.0) (2026-07-26)
+
+
+### Features
+
+* adopt the PR-title check (shared build v0.6.0) ([#44](https://github.com/tittle-xyz/toaster-ready/issues/44)) ([2909755](https://github.com/tittle-xyz/toaster-ready/commit/2909755d84e789c8d4dd0cb637a8fd59b20dac18))
+* report the build version via toaster --version ([#39](https://github.com/tittle-xyz/toaster-ready/issues/39)) ([288c76d](https://github.com/tittle-xyz/toaster-ready/commit/288c76d3c3076d693daee428e55e5288d614ad88))
+
+
+### Bug Fixes
+
+* pass RELEASE_PLEASE_TOKEN and stop Dependabot bumping shared-build refs ([#41](https://github.com/tittle-xyz/toaster-ready/issues/41)) ([b7b9503](https://github.com/tittle-xyz/toaster-ready/commit/b7b9503d7b5eea0a2f8230050795c17e8b7d919b))
+* re-run CI when a PR is edited so renaming clears the title check ([#45](https://github.com/tittle-xyz/toaster-ready/issues/45)) ([77678d4](https://github.com/tittle-xyz/toaster-ready/commit/77678d4fafb4255d009a53776cfe9492c3fedbbd))
+
 ## [0.5.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.2...v0.5.0) (2026-07-17)
 
 
