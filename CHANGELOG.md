@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.5.0...v0.6.0) (2026-07-26)
+
+
+### Features
+
+* report the build version via toaster --version ([#39](https://github.com/tittle-xyz/toaster-ready/issues/39)) ([288c76d](https://github.com/tittle-xyz/toaster-ready/commit/288c76d3c3076d693daee428e55e5288d614ad88))
+
 ## [0.5.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.4.2...v0.5.0) (2026-07-17)
 
 
