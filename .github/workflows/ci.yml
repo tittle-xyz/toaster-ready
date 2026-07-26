@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   ci:
-    uses: tittle-xyz/go-shared-build/.github/workflows/go-ci.yml@v0.3.0
+    uses: tittle-xyz/go-shared-build/.github/workflows/go-ci.yml@v0.4.0
     with:
       # The shared readiness job installs a *published* toaster release. This repo
       # is toaster-ready, so that would score it with the previous version rather
