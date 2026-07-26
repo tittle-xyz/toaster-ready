@@ -18,8 +18,10 @@ a scorecard; judgment, link resolution, and persistence belong to the skill
 layer that wraps it.`,
 }
 
-// Execute runs the root command.
-func Execute() {
+// Execute runs the root command. version is stamped at build time and surfaces
+// as `toaster --version`; callers pass "dev" for an unstamped local build.
+func Execute(version string) {
+	rootCmd.Version = version
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "toaster:", err)
 		os.Exit(1)
