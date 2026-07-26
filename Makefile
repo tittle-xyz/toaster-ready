@@ -6,7 +6,7 @@ MAIN := ./cmd/toaster
 SHARED_SKIP_TARGETS := run
 
 SHARED_BUILD_REPO ?= https://github.com/tittle-xyz/go-shared-build.git
-SHARED_BUILD_REF  ?= v0.4.0
+SHARED_BUILD_REF  ?= v0.5.0
 SHARED_BUILD_DIR  ?= .build
 
 # Fetch the pinned shared build before the include below is evaluated, so a fresh
