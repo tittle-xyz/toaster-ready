@@ -60,7 +60,7 @@ func Open(target string) (*Repo, error) {
 	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", url, dir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(dir)
-		return nil, fmt.Errorf("git clone %s: %v: %s", target, err, strings.TrimSpace(string(out)))
+		return nil, fmt.Errorf("git clone %s: %w: %s", target, err, strings.TrimSpace(string(out)))
 	}
 	r := &Repo{Root: dir, Ref: gitHead(dir), Slug: target, tmpClone: true}
 	return r, nil
@@ -197,13 +197,13 @@ func (r *Repo) gitIgnored() map[string]bool {
 	// Porcelain paths are relative to the *repository* root; when r.Root is a
 	// subdirectory of the repo, --show-prefix is how much of that to strip. This
 	// also doubles as the is-this-a-git-tree test.
-	prefix, err := exec.Command("git", "-C", r.Root, "rev-parse", "--show-prefix").Output()
+	prefix, err := exec.CommandContext(context.Background(), "git", "-C", r.Root, "rev-parse", "--show-prefix").Output()
 	if err != nil {
 		return set
 	}
 	// --no-optional-locks keeps a scoring run from taking the index lock; -z
 	// avoids git's path quoting; traditional collapses ignored dirs to one entry.
-	out, err := exec.Command("git", "--no-optional-locks", "-C", r.Root, "status",
+	out, err := exec.CommandContext(context.Background(), "git", "--no-optional-locks", "-C", r.Root, "status",
 		"--porcelain", "-z", "--ignored=traditional").Output()
 	if err != nil {
 		// Exit 1 has no special meaning for status, so any error means we simply
@@ -225,7 +225,7 @@ func (r *Repo) gitIgnored() map[string]bool {
 
 // GitTags returns local git tags (used as a semver signal).
 func (r *Repo) GitTags() []string {
-	out, err := exec.Command("git", "-C", r.Root, "tag").Output()
+	out, err := exec.CommandContext(context.Background(), "git", "-C", r.Root, "tag").Output()
 	if err != nil {
 		return nil
 	}
@@ -244,7 +244,7 @@ func (r *Repo) GitTags() []string {
 // shallow tree (a `--depth 1` clone has a single commit that "touched" every
 // file), so it must surface no-data rather than trust the truncated log.
 func (r *Repo) IsShallow() bool {
-	out, err := exec.Command("git", "-C", r.Root, "rev-parse", "--is-shallow-repository").Output()
+	out, err := exec.CommandContext(context.Background(), "git", "-C", r.Root, "rev-parse", "--is-shallow-repository").Output()
 	if err != nil {
 		return false
 	}
@@ -279,7 +279,7 @@ func (r *Repo) InstructionsChurn(instrPath string) (since, total int, ok bool) {
 // lastCommitSha returns the SHA of the most recent commit that touched rel, or
 // "" if rel has no history (untracked, or not a git repo).
 func (r *Repo) lastCommitSha(rel string) string {
-	out, err := exec.Command("git", "-C", r.Root, "log", "-1", "--format=%H", "--", rel).Output()
+	out, err := exec.CommandContext(context.Background(), "git", "-C", r.Root, "log", "-1", "--format=%H", "--", rel).Output()
 	if err != nil {
 		return ""
 	}
@@ -294,7 +294,7 @@ func (r *Repo) countCommits(revRange string, pathspec []string) (int, bool) {
 		args = append(args, "--")
 		args = append(args, pathspec...)
 	}
-	out, err := exec.Command("git", args...).Output()
+	out, err := exec.CommandContext(context.Background(), "git", args...).Output()
 	if err != nil {
 		return 0, false
 	}
@@ -317,7 +317,7 @@ func isLocalPath(target string) bool {
 }
 
 func gitHead(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	out, err := exec.CommandContext(context.Background(), "git", "-C", dir, "rev-parse", "HEAD").Output()
 	if err != nil {
 		return ""
 	}
@@ -326,7 +326,7 @@ func gitHead(dir string) string {
 
 // slugFromRemote best-effort extracts owner/name from origin's URL.
 func slugFromRemote(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output()
+	out, err := exec.CommandContext(context.Background(), "git", "-C", dir, "remote", "get-url", "origin").Output()
 	if err != nil {
 		return ""
 	}

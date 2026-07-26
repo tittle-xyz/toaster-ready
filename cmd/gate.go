@@ -36,7 +36,7 @@ var gateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 
 		cfg, _, err := config.Load(r.Root, gateConfig)
 		if err != nil {
@@ -64,7 +64,7 @@ var gateCmd = &cobra.Command{
 
 		if len(failures) > 0 {
 			fmt.Fprintf(os.Stderr, "toaster gate: FAILED (%d)\n", len(failures))
-			r.Close() // deferred Close won't run after os.Exit; clean up the temp clone
+			_ = r.Close() // deferred Close won't run after os.Exit; clean up the temp clone
 			os.Exit(2)
 		}
 		return nil

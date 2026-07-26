@@ -39,7 +39,7 @@ var checkCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 
 		cfg, _, err := config.Load(r.Root, checkConfig)
 		if err != nil {
@@ -56,17 +56,20 @@ var checkCmd = &cobra.Command{
 			enc.SetIndent("", "  ")
 			return enc.Encode(sc)
 		case "markdown", "md":
-			fmt.Fprint(os.Stdout, render.Markdown(sc))
+			_, err = fmt.Fprint(os.Stdout, render.Markdown(sc))
+			return err
 		case "html":
-			fmt.Fprint(os.Stdout, render.HTML(sc))
+			_, err = fmt.Fprint(os.Stdout, render.HTML(sc))
+			return err
 		case "shields":
-			fmt.Fprintln(os.Stdout, render.Shields(sc))
+			_, err = fmt.Fprintln(os.Stdout, render.Shields(sc))
+			return err
 		case "svg":
-			fmt.Fprint(os.Stdout, render.BadgeSVG(sc))
+			_, err = fmt.Fprint(os.Stdout, render.BadgeSVG(sc))
+			return err
 		default:
 			return fmt.Errorf("unknown format %q (want json, markdown, html, shields, or svg)", checkFormat)
 		}
-		return nil
 	},
 }
 

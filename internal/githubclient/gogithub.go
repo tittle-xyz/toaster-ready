@@ -186,7 +186,7 @@ func resolveToken() (token, source string) {
 	if t := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); t != "" {
 		return t, "env:GITHUB_TOKEN"
 	}
-	if out, err := exec.Command("gh", "auth", "token").Output(); err == nil {
+	if out, err := exec.CommandContext(context.Background(), "gh", "auth", "token").Output(); err == nil {
 		if t := strings.TrimSpace(string(out)); t != "" {
 			return t, "gh auth token"
 		}

@@ -1,35 +1,36 @@
 name: ci
 
+# The gate lives in go-shared-build so it can be improved once for every project.
+# See: https://github.com/tittle-xyz/go-shared-build
 on:
+  pull_request:
   push:
     branches: [main]
-  pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  build-test:
+  ci:
+    uses: tittle-xyz/go-shared-build/.github/workflows/go-ci.yml@v0.4.0
+    with:
+      # The shared readiness job installs a *published* toaster release. This repo
+      # is toaster-ready, so that would score it with the previous version rather
+      # than the code under review. The `gate` job below dogfoods this tree instead.
+      readiness: false
+
+  gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Several readiness signals are derived from git history.
+          fetch-depth: 0
 
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version-file: go.mod
           cache: true
 
-      - name: Format check
-        run: make fmt-check
-
-      - name: Vet
-        run: make vet
-
-      - name: Test
-        run: make coverage
-
-      - name: Build
-        run: make build
-
       - name: toaster-ready gates itself
-        run: ./bin/toaster gate .
+        run: make gate

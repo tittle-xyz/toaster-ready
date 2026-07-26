@@ -11,7 +11,10 @@ builds:
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags:
-      - -s -w
+      # Note the -X: GoReleaser stamps main.version for you by default, but naming
+      # ldflags at all REPLACES those defaults, so the stamp has to be restated
+      # here. Without it every published binary has no version at all.
+      - -s -w -X main.version={{ .Version }}
 
 archives:
   - id: toaster

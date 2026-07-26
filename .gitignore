@@ -10,3 +10,12 @@
 
 # Coverage artifact from `make coverage`.
 /coverage.out
+
+# shared build, fetched by make (pinned in the Makefile)
+/.build/
+
+# pinned developer tools, installed by make
+/.tools/
+
+# goreleaser output
+/dist/

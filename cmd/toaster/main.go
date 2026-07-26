@@ -8,6 +8,10 @@ package main
 
 import "github.com/tittle-xyz/toaster-ready/cmd"
 
+// version is stamped at build time via -ldflags "-X main.version=...".
+// A plain `go build` leaves it as "dev"; a release build carries the tag.
+var version = "dev"
+
 func main() {
-	cmd.Execute()
+	cmd.Execute(version)
 }
