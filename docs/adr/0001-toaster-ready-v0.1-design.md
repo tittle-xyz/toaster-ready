@@ -43,6 +43,8 @@ onboard onto" becomes an auditable standard rather than a vibe.
 
 7. **Regex secret floor for v0.1**, swappable for gitleaks when wiring the real
    CI gate. It scans the working tree only — not git history.
+   *(Superseded by ADR-0003: the swap was withdrawn. The floor stays basic and
+   gitleaks runs in the pipeline instead.)*
 
 8. **`git clone` via exec** for remote slugs (go-git deferred).
 

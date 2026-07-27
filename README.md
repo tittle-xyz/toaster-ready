@@ -207,7 +207,13 @@ toaster check . --offline --format svg > docs/badge.svg
 
 - **Skill layer** — an optional agent-driven wrapper that adds judgment scoring, resolves linked source material (e.g. Confluence/Jira) via an MCP integration, and persists `scorecards/<slug>.json`. The binary stays pure.
 - **GitHub Action** — drop-in CI adoption.
-- **gitleaks** — swap the regex secret floor for a full scanner.
+- ~~**gitleaks** — swap the regex secret floor for a full scanner.~~ **Withdrawn**
+  ([ADR-0003](docs/adr/0003-secret-floor-stays-basic.md)). The built-in floor stays
+  deliberately basic — a scoring signal, not a scanning product — and gitleaks runs
+  in the pipeline instead, pinned as a tool by
+  [`go-shared-build`](https://github.com/tittle-xyz/go-shared-build). Parity in-process
+  would have meant ~3,300 lines of reimplemented engine, or taking the module graph
+  from 13 to 202 to import it.
 
 ## License
 
