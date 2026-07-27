@@ -3,8 +3,22 @@ title = "toaster-ready gitleaks config"
 [extend]
 useDefault = true
 
-[allowlist]
-description = "Intentional fake credentials in test fixtures"
+# Note the plural. A top-level [allowlist] *replaces* gitleaks' default global
+# allowlist and loses all of its built-in noise suppression; [[allowlists]] is
+# additive. (Learned the hard way in home-infra.)
+[[allowlists]]
+description = """
+Deliberately fake credentials. This repo's own secret floor has to be tested
+against realistically-shaped keys, so these files contain literals by necessity —
+they are fixtures, not configuration.
+"""
 paths = [
   '''internal/check/testdata/.*''',
+  '''internal/check/secrets_test\.go''',
+  # This file replaces the shared gitleaks.toml rather than extending it, so the
+  # tooling exclusions have to be repeated here. `gitleaks dir` walks the
+  # filesystem, so it sees these despite both being gitignored — and
+  # .build/scripts/selftest.sh plants a key as its own negative-test fixture.
+  '''^\.build/''',
+  '''^\.tools/''',
 ]
