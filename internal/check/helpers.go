@@ -5,6 +5,7 @@ package check
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -537,7 +538,20 @@ func seedTarget(r *repo.Repo) string {
 	return ""
 }
 
-// --- secret floor (regex, v0.1; gitleaks swaps in later) -------------------
+// --- secret floor -----------------------------------------------------------
+//
+// Deliberately basic. This is a *scoring floor* — "does this repo obviously have
+// credentials committed?" — not a secret-scanning product. Thorough scanning is
+// gitleaks' job, run in the pipeline (go-shared-build pins it and `make check`
+// invokes it), where the ~200-module dependency tree costs a consumer nothing.
+//
+// Full gitleaks parity here would mean reimplementing ~3,300 lines of engine —
+// entropy, keyword prefilters, per-rule allowlists, and the base64/hex decoders
+// that rescan encoded blobs — then tracking it forever. A subtle bug in any of
+// that is a false negative in security tooling, which is worse than not having
+// it. So: few rules, high signal, and an entropy check to keep them honest.
+//
+// Scans the working tree only. History is gitleaks' territory.
 
 type secretHit struct {
 	Path string
@@ -548,16 +562,101 @@ type secretHit struct {
 var secretRules = []struct {
 	name string
 	re   *regexp.Regexp
+	// minEntropy, when > 0, requires the value captured as group 1 to look random
+	// enough to be a real credential. It is what lets the broad, name-based rules
+	// below exist without drowning the score in false positives — and the reason
+	// those rules capture the value themselves rather than have it guessed from
+	// the line.
+	minEntropy float64
 }{
-	{"aws-access-key-id", regexp.MustCompile(`AKIA[0-9A-Z]{16}`)},
-	{"private-key-block", regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`)},
-	{"assigned-credential", regexp.MustCompile(`(?i)(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\s*(?:=|:|=>)\s*['"][^'"\s]{8,}['"]`)},
-	{"php-define-secret", regexp.MustCompile(`(?i)define\s*\(\s*['"][A-Z0-9_]*(?:KEY|SECRET|PASSWORD|TOKEN)[A-Z0-9_]*['"]\s*,\s*['"][^'"\s]{6,}['"]`)},
-	{"jwt-literal", regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`)},
+	// Provider tokens: distinctive prefixes, so no entropy gate needed.
+	{"aws-access-key-id", regexp.MustCompile(`AKIA[0-9A-Z]{16}`), 0},
+	{"github-token", regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{36,}`), 0},
+	{"slack-token", regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`), 0},
+	{"google-api-key", regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`), 0},
+	{"private-key-block", regexp.MustCompile(`-----BEGIN (?:RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----`), 0},
+	{"jwt-literal", regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`), 0},
+
+	// Assignment shapes, gated on entropy because they are necessarily broad.
+	//
+	// The original rule matched only an *unquoted* key, so `"password": "..."` in a
+	// map or JSON literal slipped through. The key may now be quoted and `:` is
+	// accepted as a separator.
+	{"assigned-credential", regexp.MustCompile(
+		"(?i)[\"'`]?(?:password|passwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)[\"'`]?\\s*(?:=|:|=>|:=)\\s*[\"'`]([^\"'`\\s]{8,})[\"'`]"), 3.0},
+
+	// ...and it keyed off whole words, so `dbPass = "..."` was invisible. Matching
+	// bare `pass` is deliberately loose — it also hits `passphrase`, `userPass` —
+	// which is exactly why this rule carries the highest entropy bar.
+	{"credential-ish-name", regexp.MustCompile(
+		"(?i)\\b\\w*(?:pass|secret|token|apikey|credential)\\w*[\"'`]?\\s*(?:=|:|=>|:=)\\s*[\"'`]([^\"'`\\s]{10,})[\"'`]"), 3.5},
+
+	{"php-define-secret", regexp.MustCompile(
+		"(?i)define\\s*\\(\\s*['\"][A-Z0-9_]*(?:KEY|SECRET|PASSWORD|TOKEN)[A-Z0-9_]*['\"]\\s*,\\s*['\"]([^'\"\\s]{6,})['\"]"), 0},
+}
+
+// valueIsSlug reports whether v looks like a lowercase kebab/snake identifier of
+// dictionary words — `config-and-secrets`, `testing-and-coverage`. Entropy cannot
+// separate those from credentials: "config-and-secrets" scores 3.61, *higher* than
+// the real secret "hX7qP2mZ9vLk" at 3.58. So the guard is on shape.
+//
+// Segments must be purely alphabetic. That distinction is load-bearing: a
+// Stripe-style `sk_live_<random>` is also lowercase-with-underscores, and
+// an earlier version of this pattern allowed digits in segments and silently
+// stopped detecting it.
+var valueIsSlug = regexp.MustCompile(`^[a-z]+(?:[-_][a-z]+)+$`)
+
+// shannonEntropy returns the Shannon entropy of s in bits per character. Real
+// credentials are high-entropy; words, paths and sentences are not. Cheap, and
+// it is the difference between a broad rule being useful and being noise.
+func shannonEntropy(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	var freq [256]float64
+	for i := 0; i < len(s); i++ {
+		freq[s[i]]++
+	}
+	n := float64(len(s))
+	var h float64
+	for _, c := range freq {
+		if c == 0 {
+			continue
+		}
+		p := c / n
+		h -= p * math.Log2(p)
+	}
+	return h
 }
 
 // placeholders we should not flag (example/template values)
 var secretIgnore = regexp.MustCompile(`(?i)(your[_-]?|example|changeme|placeholder|xxxx|<.*>|\$\{)`)
+
+// matchSecretRule reports the first rule that considers line a secret. Extracted
+// so tests exercise the real decision rather than a copy of it — an earlier
+// duplicate in the test file drifted from this and reported a guard as working
+// when it was not wired up at all.
+func matchSecretRule(line string) (string, bool) {
+	for _, rule := range secretRules {
+		m := rule.re.FindStringSubmatch(line)
+		if m == nil || secretIgnore.MatchString(line) {
+			continue
+		}
+		// Entropy is judged on the value the rule captured, never guessed from the
+		// line: map[string]string{"password": "..."} would otherwise be scored on
+		// "string" and wrongly pass.
+		if rule.minEntropy > 0 {
+			if len(m) < 2 || shannonEntropy(m[1]) < rule.minEntropy {
+				continue
+			}
+			if valueIsSlug.MatchString(m[1]) {
+				continue
+			}
+		}
+		return rule.name, true
+	}
+	return "", false
+}
 
 func scanSecrets(r *repo.Repo) []secretHit {
 	var hits []secretHit
@@ -573,11 +672,8 @@ func scanSecrets(r *repo.Repo) []secretHit {
 			if len(line) > 500 {
 				continue
 			}
-			for _, rule := range secretRules {
-				if rule.re.MatchString(line) && !secretIgnore.MatchString(line) {
-					hits = append(hits, secretHit{Path: rel, Ref: fmt.Sprintf("L%d", i+1), Rule: rule.name})
-					break
-				}
+			if name, ok := matchSecretRule(line); ok {
+				hits = append(hits, secretHit{Path: rel, Ref: fmt.Sprintf("L%d", i+1), Rule: name})
 			}
 		}
 	}
