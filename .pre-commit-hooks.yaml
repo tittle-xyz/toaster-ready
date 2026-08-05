@@ -1,0 +1,36 @@
+# pre-commit integration. Consumers add this repo to .pre-commit-config.yaml and
+# get a badge that stays current without anyone remembering to refresh it, and
+# without CI needing write access to the repo.
+#
+# Why a hook rather than a CI job that commits the badge: pushing to a protected
+# default branch needs a bypass actor, and pushing to a PR branch with the
+# workflow token produces a run stuck in `action_required` with no check runs —
+# which makes the PR unmergeable wherever required status checks are on. Neither
+# is a good trade for a badge. Refreshing at commit time sidesteps both.
+#
+# Both hooks are `--offline` on purpose. The API-backed signals (CI status,
+# branch protection) reflect live state, so an online badge changes when the repo
+# has not, and two contributors would produce different files. Offline is
+# reproducible, which is the property a committed artifact needs.
+
+- id: toaster-badge
+  name: refresh toaster-ready badge
+  description: >
+    Regenerate the readiness badge from the working tree. Offline and
+    deterministic, and the file is only touched when the score actually changes,
+    so a clean run is a genuine no-op.
+  entry: toaster check . --offline --format svg --out docs/badge.svg
+  language: golang
+  pass_filenames: false
+  always_run: true
+
+- id: toaster-gate
+  name: toaster-ready floor
+  description: >
+    Fail the commit when the repo drops below its ramp-up floor. Off by default
+    in the sense that you opt in per repo — some repos want the badge without the
+    gate.
+  entry: toaster gate .
+  language: golang
+  pass_filenames: false
+  always_run: true
