@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.6.0...v0.7.0) (2026-08-05)
+
+
+### Features
+
+* refresh the badge on the PR branch, and dogfood it here ([#49](https://github.com/tittle-xyz/toaster-ready/issues/49)) ([557928f](https://github.com/tittle-xyz/toaster-ready/commit/557928fc08c82522ede693599022ae6210e590c8))
+* ship a pre-commit hook, and verify the badge in CI instead of pushing it ([#50](https://github.com/tittle-xyz/toaster-ready/issues/50)) ([655ca00](https://github.com/tittle-xyz/toaster-ready/commit/655ca00186b94de3f2b3bc382223bf3708197eb7))
+
+
+### Bug Fixes
+
+* make the secret floor basic but robust ([#46](https://github.com/tittle-xyz/toaster-ready/issues/46)) ([96d1824](https://github.com/tittle-xyz/toaster-ready/commit/96d1824c18cd91517b1cd22d3e21827dc4ddf44a))
+
 ## [0.6.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.5.0...v0.6.0) (2026-07-26)
 
 
