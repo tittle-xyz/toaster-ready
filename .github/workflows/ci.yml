@@ -25,57 +25,31 @@ jobs:
 
   gate:
     runs-on: ubuntu-latest
-    permissions:
-      # Write is for the badge refresh below, which commits to the PR branch.
-      # Never to the default branch — see the comment on that step.
-      contents: write
+    # Deliberately read-only. The badge is committed by the author (pre-commit
+    # hook), and CI only verifies it — so nothing here needs write access, and a
+    # consumer can protect their default branch with no bypass actor.
     steps:
       - uses: actions/checkout@v7
         with:
           # Several readiness signals are derived from git history.
           fetch-depth: 0
-          # On a PR, check out the HEAD BRANCH rather than the detached merge ref
-          # `pull_request` gives by default. A detached ref cannot be pushed, and
-          # the badge refresh below needs to push. This is the exact footgun the
-          # `commit` input warns about; documenting it in action.yml too.
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || '' }}
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
-      # Dogfood the badge on the PR branch, NOT by pushing to main.
+      # Verify, never write. The badge is generated offline and is therefore
+      # reproducible, so a stale committed badge is a real failure rather than a
+      # timing artifact.
       #
-      # The badge has to live on the default branch — READMEs reference it by
-      # relative path, so it resolves against whatever branch is being viewed —
-      # but nothing has to *push* there. Refreshing on the PR means the badge
-      # arrives on main through the normal merge, in the same change that moved
-      # the score, and the default branch can stay protected with no bypass.
-      #
-      # Runs before the gate so the badge is refreshed even when the gate fails,
-      # matching the ordering in action.yml.
-      - name: Refresh readiness badge
-        if: ${{ github.event_name == 'pull_request' }}
-        env:
-          # The CI-status and branch-protection signals are read from the API.
-          # Without a token they degrade to no-data and the badge would differ
-          # from what a consumer's run produces.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: make badge
-
-      - name: Commit the badge if it changed
-        if: ${{ github.event_name == 'pull_request' }}
-        run: |
-          if git diff --quiet -- docs/badge.svg; then
-            echo "badge unchanged"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/badge.svg
-          git commit -m "chore: refresh readiness badge"
-          git push
+      # This replaced a job that pushed the badge itself. That does not survive
+      # branch protection: pushing to a protected default branch needs a bypass
+      # actor, and pushing to a PR branch with the workflow token yields a run
+      # stuck in `action_required` with zero check runs — so the PR becomes
+      # unmergeable wherever required status checks are on. Verified both.
+      - name: Badge is current
+        run: make badge-check
 
       - name: toaster-ready gates itself
         run: make gate
