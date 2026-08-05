@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/tittle-xyz/toaster-ready/compare/v0.8.0...v0.8.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **action:** remove expression syntax from an input description ([#54](https://github.com/tittle-xyz/toaster-ready/issues/54)) ([ebf348b](https://github.com/tittle-xyz/toaster-ready/commit/ebf348b5719b1e3441755e76c472dbd3e3aac853))
+
 ## [0.8.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.7.0...v0.8.0) (2026-08-05)
 
 
