@@ -32,21 +32,27 @@ inputs:
   commit:
     description: >
       Commit and push the badge to the current branch when it changes. Off by
-      default. Needs `contents: write` and a branch the workflow token may push to
-      — a protected default branch will reject it, so refresh the badge on a PR
-      branch and let it reach the default branch through the merge.
+      default, and NOT the recommended path — prefer the pre-commit hook (see
+      README): the author commits the badge and CI merely verifies it, so nothing
+      needs write access at all.
 
-      Running this on `pull_request` needs one thing from the caller:
-      `actions/checkout` must be given `ref: ${{ github.head_ref }}`. The default
-      `pull_request` checkout is a DETACHED merge ref, and pushing it fails with
-      "HEAD is detached" — the badge is written, the commit succeeds, and only the
-      push fails, so it reads as a permissions problem when it is not.
+      This does not survive branch protection, which is why the hook exists.
+      Pushing to a protected default branch needs a ruleset bypass actor, and
+      `github-actions[bot]` cannot be one ("must be part of the ruleset source or
+      owner organization"). Pushing to a PR branch instead produces a workflow run
+      stuck in `action_required` with zero check runs, so the PR becomes
+      unmergeable wherever required status checks are on. Both verified.
 
-      The badge still has to live on the default branch: READMEs reference it by
-      relative path, which resolves against the branch being viewed. Moving the
-      file elsewhere and using an absolute raw URL breaks on private repos, where
-      GitHub's image proxy fetches it unauthenticated. Refreshing on the PR keeps
-      the file where it must be without ever pushing to a protected branch.
+      If you use it anyway on `pull_request`, `actions/checkout` must be given
+      `ref: ${{ github.head_ref }}`. The default `pull_request` checkout is a
+      DETACHED merge ref, and the failure is misleading — the badge is written,
+      the commit succeeds, and only the push fails, so it reads as a permissions
+      problem when it is not.
+
+      Note the badge has to live on the default branch either way: READMEs
+      reference it by relative path, which resolves against the branch being
+      viewed. Moving the file elsewhere and using an absolute raw URL breaks on
+      private repos, where GitHub's image proxy fetches it unauthenticated.
     required: false
     default: 'false'
   token:

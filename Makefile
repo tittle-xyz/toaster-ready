@@ -37,10 +37,26 @@ run: build ## Score this repo with this repo
 gate: build ## Score this repo and fail below the ramp-up floor
 	$(BINARY) gate .
 
-# Dogfood the badge too. Same command the action runs, so what CI commits here is
-# what a consumer would get. Note the score is not purely a function of the tree:
-# the CI-status and branch-protection signals are read live from the API, so this
-# needs GITHUB_TOKEN (or `gh auth token`) to match what CI produces.
+# Dogfood the badge. Offline on purpose: the API-backed signals (CI status,
+# branch protection) reflect live state, so an online badge changes when the repo
+# has not — which is no good for a file that lives in git. Offline is
+# reproducible, so the badge can be committed by the author and merely verified
+# in CI, with nothing needing write access.
+#
+# `--out` leaves the file alone when the score is unchanged, so this and the
+# pre-commit hook are both true no-ops on a clean tree.
 .PHONY: badge
-badge: build ## Refresh docs/badge.svg from this tree
-	$(BINARY) check . --format svg > docs/badge.svg
+badge: build ## Refresh docs/badge.svg from this tree (offline, deterministic)
+	$(BINARY) check . --offline --format svg --out docs/badge.svg
+
+# The CI half of the same idea: verify, never write. Fails when the committed
+# badge is stale, and says exactly how to fix it.
+.PHONY: badge-check
+badge-check: badge ## Fail when docs/badge.svg is out of date
+	@git diff --quiet -- docs/badge.svg || { \
+	  echo "docs/badge.svg is out of date. Run 'make badge' and commit the result"; \
+	  echo "(or install the pre-commit hook so it happens for you)."; \
+	  git --no-pager diff -- docs/badge.svg; \
+	  exit 1; \
+	}
+	@echo "badge is current"

@@ -102,6 +102,37 @@ Gate any repo's CI on ramp-up readiness — the scorecard is written to the job 
 
 ### Publish a readiness badge
 
+**The recommended way is the pre-commit hook.** The author commits the badge like
+any other generated file, and CI only verifies it — so nothing needs write access
+to your repo, and your default branch can stay protected with no bypass:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/tittle-xyz/toaster-ready
+    rev: v0.7.0             # or: pre-commit autoupdate
+    hooks:
+      - id: toaster-badge     # refreshes docs/badge.svg when the score moves
+      # - id: toaster-gate    # optional: also fail the commit below the floor
+```
+
+Then reference it: `![toaster-ready](docs/badge.svg)`, and verify it in CI with a
+step that regenerates and diffs — `toaster check . --offline --format svg --out
+docs/badge.svg` followed by `git diff --exit-code -- docs/badge.svg`.
+
+The hook is **offline and deterministic**, which is what makes a committed badge
+workable: the API-backed signals reflect live state, so an online badge changes
+when your repo has not, and two contributors would produce different files.
+`--out` leaves the file untouched when the score is unchanged, so a clean run is a
+genuine no-op rather than a "files were modified by this hook" prompt.
+
+The badge has to live on the default branch, because READMEs reference it by
+relative path. Moving it to a side branch and using an absolute raw URL breaks on
+**private** repos, where GitHub's image proxy fetches it unauthenticated.
+
+<details>
+<summary>Alternative: let the Action commit it (not recommended)</summary>
+
 Set `badge` to a path and the Action writes the badge there (format inferred from the extension — `.svg` self-contained, `.json` a shields endpoint). Add `commit: true` and it commits and pushes the badge when the score moves:
 
 ```yaml
@@ -159,6 +190,21 @@ the repo the badge claims to describe.
 input). Without a token it reads several points low: Actions runners share the
 unauthenticated API allowance, it's reliably spent, the CI-status lookup 403s, and
 the category goes no-data.
+
+**Why this path is no longer recommended.** Two limits make it awkward wherever
+the default branch is protected, both verified rather than inferred:
+
+- `github-actions[bot]` **cannot** be a ruleset bypass actor — GitHub rejects it
+  with *"must be part of the ruleset source or owner organization"*. Only
+  org-installed apps qualify.
+- Pushing to a PR branch with the workflow token produces a run stuck in
+  **`action_required` with zero check runs**, so the PR becomes unmergeable
+  wherever required status checks are on — the passing checks belong to the
+  previous commit.
+
+Either route therefore needs a privileged token. The pre-commit hook needs none.
+
+</details>
 
 ## Configuration
 
