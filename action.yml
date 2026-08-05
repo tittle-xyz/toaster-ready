@@ -43,11 +43,16 @@ inputs:
       stuck in `action_required` with zero check runs, so the PR becomes
       unmergeable wherever required status checks are on. Both verified.
 
-      If you use it anyway on `pull_request`, `actions/checkout` must be given
-      `ref: ${{ github.head_ref }}`. The default `pull_request` checkout is a
-      DETACHED merge ref, and the failure is misleading — the badge is written,
-      the commit succeeds, and only the push fails, so it reads as a permissions
-      problem when it is not.
+      If you use it anyway on `pull_request`, `actions/checkout` must be given a
+      `ref` of the head branch (the `github.head_ref` context value). The default
+      `pull_request` checkout is a DETACHED merge ref, and the failure is
+      misleading — the badge is written, the commit succeeds, and only the push
+      fails, so it reads as a permissions problem when it is not.
+
+      (Named as a context value rather than written as an expression on purpose.
+      Actions evaluates expression syntax anywhere in this manifest, including
+      input descriptions, and `github` is not in scope there — writing it out
+      fails the entire action at load time, for every consumer.)
 
       Note the badge has to live on the default branch either way: READMEs
       reference it by relative path, which resolves against the branch being
