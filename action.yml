@@ -55,6 +55,35 @@ inputs:
       private repos, where GitHub's image proxy fetches it unauthenticated.
     required: false
     default: 'false'
+  offline:
+    description: >
+      Skip the GitHub API and report its signals as no-data. Makes the score a
+      pure function of the tree, which is what a committed badge needs: the
+      API-backed signals reflect live state, so an online badge changes when the
+      repo has not, and two runs need not agree.
+
+      Pair this with `verify` (below). It is also what the pre-commit hook uses,
+      so a badge refreshed locally and one checked in CI are the same artifact.
+
+      Note it scores lower than an online run, because the skipped signals report
+      no-data rather than earning credit.
+    required: false
+    default: 'false'
+  verify:
+    description: >
+      Fail when the committed badge is out of date, instead of writing it. This is
+      the recommended CI shape: the author commits the badge (a pre-commit hook
+      makes that automatic — see the README) and CI only checks it, so nothing
+      needs `contents: write` and the default branch can stay protected with no
+      bypass actor.
+
+      Pair with `offline: true`. Verifying an online-scored badge is flaky by
+      construction — it fails whenever a live signal moved, which is unrelated to
+      the change under review. The action warns if you do it anyway.
+
+      Mutually exclusive with `commit`.
+    required: false
+    default: 'false'
   token:
     description: >
       Token for the API-backed signals (latest CI run, branch protection). Defaults
@@ -62,12 +91,23 @@ inputs:
       Without one the score lands ~6 points low on a runner: Actions IPs share the
       unauthenticated API allowance and it is reliably spent, so the lookups 403 and
       report no-data. Pass an empty string to score without the API on purpose.
+
+      Ignored when `offline: true`.
     required: false
     default: ${{ github.token }}
 
 runs:
   using: 'composite'
   steps:
+    # First, so a misconfiguration fails in seconds rather than after a Go
+    # toolchain install and a full scoring run.
+    - name: Reject contradictory inputs
+      if: ${{ inputs.commit == 'true' && inputs.verify == 'true' }}
+      shell: bash
+      run: |
+        echo '::error::commit and verify are mutually exclusive — one writes the badge, the other asserts it was already written.'
+        exit 1
+
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
@@ -96,16 +136,53 @@ runs:
       env:
         TARGET: ${{ inputs.target }}
         BADGE: ${{ inputs.badge }}
+        OFFLINE: ${{ inputs.offline }}
+        VERIFY: ${{ inputs.verify }}
         GITHUB_TOKEN: ${{ inputs.token }}
       run: |
         case "$BADGE" in
           *.svg) fmt=svg ;;
           *)     fmt=shields ;;
         esac
-        mkdir -p "$(dirname "$BADGE")"
+
+        offline_flag=()
+        if [ "$OFFLINE" = "true" ]; then
+          offline_flag=(--offline)
+        elif [ "$VERIFY" = "true" ]; then
+          # Not fatal, but it will bite: an online score moves when a live signal
+          # moves, so the diff below can fail for reasons unrelated to the change
+          # under review.
+          echo "::warning::verify is on without offline — the badge is scored from live API state, so this check is not reproducible. Set offline: true."
+        fi
+
+        # `--out` writes only when the content differs, so this is a true no-op on
+        # a current badge. That is what lets `verify` diff cleanly, and what keeps
+        # the pre-commit hook from reporting a change that is not there.
         # Runs before the gate, so the badge is refreshed even when the gate fails.
-        toaster check "$TARGET" --format "$fmt" > "$BADGE"
+        toaster check "$TARGET" --format "$fmt" "${offline_flag[@]}" --out "$BADGE"
         echo "Wrote $fmt badge to $BADGE"
+
+    - name: Verify badge is current
+      if: ${{ inputs.badge != '' && inputs.verify == 'true' }}
+      shell: bash
+      env:
+        BADGE: ${{ inputs.badge }}
+      run: |
+        if git diff --quiet -- "$BADGE" 2>/dev/null; then
+          echo "badge is current"
+          exit 0
+        fi
+        # Same extension -> format mapping as the write step above; .json is the
+        # shields endpoint format, not "json".
+        case "$BADGE" in
+          *.svg) fmt=svg ;;
+          *)     fmt=shields ;;
+        esac
+        echo "::error::$BADGE is out of date. Regenerate it and commit the result:"
+        echo "::error::  toaster check . --offline --format $fmt --out $BADGE"
+        echo "::error::Or install the pre-commit hook so it happens automatically (see the toaster-ready README)."
+        git --no-pager diff -- "$BADGE"
+        exit 1
 
     - name: Commit badge
       if: ${{ inputs.badge != '' && inputs.commit == 'true' }}
