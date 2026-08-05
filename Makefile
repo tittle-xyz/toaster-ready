@@ -36,3 +36,11 @@ run: build ## Score this repo with this repo
 .PHONY: gate
 gate: build ## Score this repo and fail below the ramp-up floor
 	$(BINARY) gate .
+
+# Dogfood the badge too. Same command the action runs, so what CI commits here is
+# what a consumer would get. Note the score is not purely a function of the tree:
+# the CI-status and branch-protection signals are read live from the API, so this
+# needs GITHUB_TOKEN (or `gh auth token`) to match what CI produces.
+.PHONY: badge
+badge: build ## Refresh docs/badge.svg from this tree
+	$(BINARY) check . --format svg > docs/badge.svg
