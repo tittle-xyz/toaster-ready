@@ -116,9 +116,26 @@ repos:
       # - id: toaster-gate    # optional: also fail the commit below the floor
 ```
 
-Then reference it: `![toaster-ready](docs/badge.svg)`, and verify it in CI with a
-step that regenerates and diffs — `toaster check . --offline --format svg --out
-docs/badge.svg` followed by `git diff --exit-code -- docs/badge.svg`.
+Then reference it: `![toaster-ready](docs/badge.svg)`, and have CI **verify** it —
+the Action does this for you:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: tittle-xyz/toaster-ready@v0
+  with:
+    badge: docs/badge.svg
+    offline: true        # deterministic: skip the live API signals
+    verify: true         # fail when the committed badge is stale
+```
+
+`verify` never writes anything, so the job needs no `contents: write` and your
+default branch can stay protected with no bypass actor. It fails with the exact
+command to fix it.
+
+Pair `verify` with `offline`. Verifying an online-scored badge is flaky by
+construction — it fails whenever a live signal moved, which has nothing to do with
+the change under review. The Action warns if you do it anyway, and `verify` and
+`commit` are mutually exclusive.
 
 The hook is **offline and deterministic**, which is what makes a committed badge
 workable: the API-backed signals reflect live state, so an online badge changes
