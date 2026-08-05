@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.7.0...v0.8.0) (2026-08-05)
+
+
+### Features
+
+* **action:** add offline and verify inputs so consumers can check the badge ([#52](https://github.com/tittle-xyz/toaster-ready/issues/52)) ([1efd440](https://github.com/tittle-xyz/toaster-ready/commit/1efd440ca1e0b4c0faf5668fa336c7a6f12bfaa3))
+
 ## [0.7.0](https://github.com/tittle-xyz/toaster-ready/compare/v0.6.0...v0.7.0) (2026-08-05)
 
 
