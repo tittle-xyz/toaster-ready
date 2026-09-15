@@ -66,12 +66,17 @@ func countHeadings(md string) int {
 	return n
 }
 
-// linkRe counts only real source-material links — a URL to Atlassian/Confluence
-// or a Jira /browse/KEY-N path. It deliberately does NOT match the bare words
-// "confluence"/"atlassian" or a bare KEY-N in prose: those produce false
-// positives (e.g. a README that merely mentions Confluence), and the actual
-// resolution of links is the skill+MCP layer's job anyway.
-var linkRe = regexp.MustCompile(`https?://[^\s)"'<>]*(?:atlassian\.net|confluence)[^\s)"'<>]*|/browse/[A-Z][A-Z0-9]+-\d+`)
+// linkRe counts real source-material links:
+//   - Full Atlassian/Confluence URLs
+//   - Jira /browse/KEY-N paths
+//   - Bare Jira-style keys (PROJECT-NNN) — the idiomatic internal reference
+//     style used when full URLs are inaccessible outside the org's network.
+//     Requires at least two uppercase letters to avoid false positives on
+//     common abbreviations (e.g. "I-5", "A-B"), and must not be preceded by
+//     a word character (so "CLAUDE.md" or "DM-7215's" don't match mid-word).
+//
+// The actual resolution of linked pages is still the skill+MCP layer's job.
+var linkRe = regexp.MustCompile(`https?://[^\s)"'<>]*(?:atlassian\.net|confluence)[^\s)"'<>]*|/browse/[A-Z][A-Z0-9]+-\d+|(?:^|[^A-Za-z0-9_])[A-Z]{2,}-\d+`)
 
 func countLinks(md string) int {
 	return len(linkRe.FindAllString(md, -1))
@@ -246,8 +251,28 @@ func captureAll(re *regexp.Regexp, s string) []string {
 	return out
 }
 
+// makeIncludeRe matches a Makefile `include` or `-include` directive, capturing
+// the included path. Handles both plain and variable-expanded paths such as
+// `include $(SHARED_BUILD_DIR)/go.mk` — the pattern used by go-shared-build
+// and similar fetched build systems where the included file is gitignored.
+var makeIncludeRe = regexp.MustCompile(`(?m)^-?include\s+\S+`)
+
+// makeIncludePathRe extracts the file path from a resolved include line,
+// after variable substitution replaces $(VAR) tokens with their values.
+var makeIncludeVarRe = regexp.MustCompile(`\$\(([^)]+)\)`)
+
 // makeTargets returns the set of targets declared in the repo's Makefile (empty
 // when there is none, which makes any documented `make X` a drift hit).
+//
+// It also follows `include` directives one level deep. This handles the
+// go-shared-build / shared-build pattern where a Makefile fetches a remote
+// build file into a gitignored directory (e.g. .build/) and includes it:
+//
+//	SHARED_BUILD_DIR ?= .build
+//	include $(SHARED_BUILD_DIR)/go.mk
+//
+// Without this, every target defined in the shared file (check, run, build, …)
+// is reported as drift whenever it is documented in CLAUDE.md.
 func makeTargets(r *repo.Repo) map[string]bool {
 	set := map[string]bool{}
 	mk := r.FirstExisting("Makefile", "makefile", "GNUmakefile")
@@ -258,11 +283,53 @@ func makeTargets(r *repo.Repo) map[string]bool {
 	if err != nil {
 		return set
 	}
-	// makeTargetRe's leading [A-Za-z0-9_] already excludes directives like .PHONY.
+
+	// Collect targets from the Makefile itself.
 	for _, m := range makeTargetRe.FindAllStringSubmatch(body, -1) {
 		set[m[1]] = true
 	}
+
+	// Resolve simple variable assignments (VAR ?= val or VAR = val) so that
+	// `include $(SHARED_BUILD_DIR)/go.mk` can be expanded to a real path.
+	vars := makefileVars(body)
+
+	// Follow include directives one level deep.
+	for _, line := range makeIncludeRe.FindAllString(body, -1) {
+		// Strip the directive keyword to get the raw path token.
+		path := strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(line), "-include"), "include")
+		path = strings.TrimSpace(path)
+		// Expand $(VAR) references using collected variable values.
+		path = makeIncludeVarRe.ReplaceAllStringFunc(path, func(tok string) string {
+			name := makeIncludeVarRe.FindStringSubmatch(tok)[1]
+			if v, ok := vars[name]; ok {
+				return v
+			}
+			return tok
+		})
+		// Only follow paths that exist in the repo (the included file may be
+		// gitignored; repo.Read handles that via the filesystem fallback).
+		if incBody, err := r.Read(path); err == nil {
+			for _, m := range makeTargetRe.FindAllStringSubmatch(incBody, -1) {
+				set[m[1]] = true
+			}
+		}
+	}
+
 	return set
+}
+
+// makefileVars extracts simple variable assignments from a Makefile body,
+// returning a map of name → value. Handles both `=` and `?=` forms.
+// Only single-line, literal-value assignments are resolved; recursive
+// variables and shell assignments are ignored.
+var makeVarRe = regexp.MustCompile(`(?m)^([A-Za-z_][A-Za-z0-9_]*)\s*[?:]?=\s*(.*)$`)
+
+func makefileVars(body string) map[string]string {
+	vars := map[string]string{}
+	for _, m := range makeVarRe.FindAllStringSubmatch(body, -1) {
+		vars[m[1]] = strings.TrimSpace(m[2])
+	}
+	return vars
 }
 
 // packageScripts returns the set of npm script names from package.json.
