@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/tittle-xyz/toaster-ready/compare/v0.8.1...v0.8.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* follow Makefile include directives and detect bare Jira keys ([dec1742](https://github.com/tittle-xyz/toaster-ready/commit/dec1742cedb2bd053b044aac1d2e21b51296584c))
+* follow Makefile include directives and detect bare Jira keys ([0f768b6](https://github.com/tittle-xyz/toaster-ready/commit/0f768b61eb7e8275d93960e67461f6a93ef71fb2))
+
 ## [0.8.1](https://github.com/tittle-xyz/toaster-ready/compare/v0.8.0...v0.8.1) (2026-08-05)
 
 
